@@ -31,15 +31,16 @@ export default function ActualPayModal({
 
   return (
     <Modal
-      title={`Actual pay · ${shortDate(occurrence.date)}`}
+      title={`Record deposit · ${shortDate(occurrence.date)}`}
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        <Field label="Actual net deposit">
+        <Field label="Deposit amount">
           <input
             className="amount-input"
             type="number"
             step="0.01"
+            min="0"
             value={actualNet}
             onChange={(event) => setActualNet(event.target.value)}
             required
@@ -54,9 +55,7 @@ export default function ActualPayModal({
                 type="number"
                 step="0.1"
                 value={regularHours}
-                onChange={(event) =>
-                  setRegularHours(event.target.value)
-                }
+                onChange={(event) => setRegularHours(event.target.value)}
               />
             </Field>
 
@@ -65,9 +64,7 @@ export default function ActualPayModal({
                 type="number"
                 step="0.1"
                 value={overtimeHours}
-                onChange={(event) =>
-                  setOvertimeHours(event.target.value)
-                }
+                onChange={(event) => setOvertimeHours(event.target.value)}
               />
             </Field>
           </div>
@@ -81,7 +78,7 @@ export default function ActualPayModal({
           >
             Cancel
           </button>
-          <button className="primary-button">Save actual</button>
+          <button type="submit" className="primary-button">Save deposit</button>
         </div>
       </form>
     </Modal>

@@ -16,8 +16,8 @@ function IncomeOccurrenceRow({ occurrence, onRecord }) {
         <strong>{occurrence.item.name}</strong>
         <span>
           {occurrence.actual?.actualNet != null
-            ? 'Actual deposit'
-            : 'Estimated'}
+            ? 'Recorded deposit'
+            : 'Estimated deposit'}
         </span>
       </div>
 
@@ -31,8 +31,8 @@ function IncomeOccurrenceRow({ occurrence, onRecord }) {
             onClick={() => onRecord(occurrence)}
           >
             {occurrence.actual?.actualNet != null
-              ? 'Edit actual'
-              : 'Record actual'}
+              ? 'Edit deposit'
+              : 'Record deposit'}
           </button>
         )}
       </div>
@@ -71,7 +71,10 @@ export default function IncomePage({
   return (
     <div className="page">
       <header className="page-head">
-        <div><h1>Income</h1></div>
+        <div>
+          <h1>Income</h1>
+          <p>Paychecks, recurring income, and other deposits.</p>
+        </div>
         <button type="button" className="primary-button" onClick={onAdd}>
           <Icon name="plus" />
           Add income
@@ -103,17 +106,17 @@ export default function IncomePage({
             </div>
 
             <div>
-              <span>Net rate</span>
+              <span>Take-home estimate</span>
               <strong>{effectiveNetPercent.toFixed(1)}%</strong>
               <small>
                 {learnedNetPercent != null
-                  ? 'Based on actual pay'
+                  ? 'Based on recorded deposits'
                   : 'Current estimate'}
               </small>
             </div>
 
             <div>
-              <span>Sources</span>
+              <span>Income sources</span>
               <strong>{income.length}</strong>
             </div>
           </section>
@@ -191,9 +194,7 @@ export default function IncomePage({
             </div>
           ) : (
             <EmptyState
-              title={`No ${
-                tab === 'recurring' ? 'recurring' : 'one-time'
-              } income.`}
+              title={`No ${tab === 'recurring' ? 'recurring' : 'one-time'} income.`}
               action="Add income"
               onAction={onAdd}
             />

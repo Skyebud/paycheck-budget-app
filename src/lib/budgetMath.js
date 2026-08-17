@@ -1,6 +1,13 @@
 import { addDays, todayIso } from './dates'
 import { scheduleOccurrences } from './recurrence'
 
+function transactionEffect(transaction) {
+  const amount = Number(transaction.amount || 0)
+  if (transaction.type === 'deposit') return amount
+  if (transaction.type === 'spent') return -amount
+  return 0
+}
+
 export function calculateBudgetView(data) {
   const occurrenceRange = {
     start: addDays(todayIso(), -365),
@@ -105,18 +112,25 @@ export function calculateBudgetView(data) {
         },
         occurrenceRange.start,
         occurrenceRange.end,
-      ).map((date) => ({
-        key: `${bill.id}:${date}`,
-        bill,
-        date,
-        paid: bill.paidDates?.includes(date) ?? false,
-      })),
+      ).map((scheduledDate) => {
+        const date = bill.dateOverrides?.[scheduledDate] || scheduledDate
+        return {
+          key: `${bill.id}:${scheduledDate}`,
+          bill,
+          scheduledDate,
+          date,
+          paid:
+            bill.paidDates?.includes(scheduledDate) ||
+            bill.paidDates?.includes(date) ||
+            false,
+        }
+      }),
     )
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const now = todayIso()
   const futureIncome = incomeOccurrences.filter(
-    (occurrence) => occurrence.date >= now,
+    (occurrence) => occurrence.date >= now && !occurrence.actual,
   )
 
   const nextIncome = futureIncome[0]
@@ -191,6 +205,90 @@ export function calculateBudgetView(data) {
     })),
   ].sort((a, b) => a.date.localeCompare(b.date))
 
+  const currentBalance = Number(data.settings.currentBalance || 0)
+
+  const postedTransactions = data.transactions
+    .filter(
+      (transaction) =>
+        transaction.type === 'spent' || transaction.type === 'deposit',
+    )
+    .sort((a, b) => {
+      const byDate = b.date.localeCompare(a.date)
+      return byDate || String(b.id).localeCompare(String(a.id))
+    })
+
+  let historicalBalance = currentBalance
+  const transactionLedger = postedTransactions.map((transaction) => {
+    const signedAmount = transactionEffect(transaction)
+    const row = {
+      key: transaction.id,
+      transaction,
+      date: transaction.date,
+      name: transaction.name || transaction.category,
+      category:
+        transaction.category ||
+        (transaction.type === 'deposit' ? 'Income' : 'Expense'),
+      type: transaction.type,
+      signedAmount,
+      runningBalance: historicalBalance,
+    }
+    historicalBalance -= signedAmount
+    return row
+  })
+
+  const recentActivity = transactionLedger.slice(0, 6)
+
+  const plannedTransactions = data.transactions
+    .filter((transaction) => transaction.type === 'planned')
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const futurePlanned = plannedTransactions
+    .filter((transaction) => transaction.date >= now)
+    .map((transaction) => ({
+      key: `transaction:${transaction.id}`,
+      date: transaction.date,
+      name: transaction.name || transaction.category,
+      category: 'Planned purchase',
+      signedAmount: -Number(transaction.amount || 0),
+      type: 'planned',
+      transaction,
+    }))
+
+  const checkbookUpcomingBase = [
+    ...futureIncome.map((occurrence) => ({
+      key: `income:${occurrence.key}`,
+      date: occurrence.date,
+      name: occurrence.item.name,
+      category: 'Expected income',
+      signedAmount: Number(occurrence.amount || 0),
+      type: 'income',
+      occurrence,
+    })),
+    ...billOccurrences
+      .filter(
+        (occurrence) => occurrence.date >= now && !occurrence.paid,
+      )
+      .map((occurrence) => ({
+        key: `bill:${occurrence.key}`,
+        date: occurrence.date,
+        name: occurrence.bill.name,
+        category: occurrence.bill.category || 'Bill',
+        signedAmount: -Number(occurrence.bill.amount || 0),
+        type: 'bill',
+        occurrence,
+      })),
+    ...futurePlanned,
+  ].sort((a, b) => a.date.localeCompare(b.date))
+
+  let projectedBalance = currentBalance
+  const checkbookUpcoming = checkbookUpcomingBase.map((row) => {
+    projectedBalance += row.signedAmount
+    return {
+      ...row,
+      runningBalance: projectedBalance,
+    }
+  })
+
   return {
     learnedNetPercent,
     effectiveNetPercent,
@@ -203,5 +301,11 @@ export function calculateBudgetView(data) {
     spentTotal,
     safeToSpend,
     upcomingRows,
+    currentBalance,
+    transactionLedger,
+    plannedTransactions,
+    recentActivity,
+    checkbookUpcoming,
+    projectedBalance,
   }
 }

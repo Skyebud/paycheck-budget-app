@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
 import Segmented from '../components/Segmented'
-import { todayIso } from '../lib/dates'
 import { uid } from '../lib/format'
 
 export default function IncomeModal({
@@ -15,9 +14,7 @@ export default function IncomeModal({
   const [recurrence, setRecurrence] = useState(
     item?.recurrence || 'once',
   )
-  const [firstDate, setFirstDate] = useState(
-    item?.firstDate || todayIso(),
-  )
+  const [firstDate, setFirstDate] = useState(item?.firstDate || '')
   const [name, setName] = useState(item?.name || 'Paycheck')
   const [payMode, setPayMode] = useState(item?.payMode || 'hourly')
   const [hourlyRate, setHourlyRate] = useState(
@@ -39,6 +36,7 @@ export default function IncomeModal({
 
   const submit = (event) => {
     event.preventDefault()
+    if (!firstDate) return
 
     onSave({
       ...(item || {}),
@@ -85,7 +83,7 @@ export default function IncomeModal({
           />
         </Field>
 
-        <Field label="Schedule">
+        <Field label="Frequency">
           <Segmented
             value={recurrence}
             onChange={setRecurrence}
@@ -99,7 +97,7 @@ export default function IncomeModal({
         </Field>
 
         <div className="form-grid two">
-          <Field label={recurrence === 'once' ? 'Date' : 'First payment'}>
+          <Field label={recurrence === 'once' ? 'Deposit date' : 'First deposit date'}>
             <input
               type="date"
               value={firstDate}
@@ -124,7 +122,7 @@ export default function IncomeModal({
               onChange={setPayMode}
               options={[
                 ['hourly', 'Hourly'],
-                ['fixed', 'Fixed net'],
+                ['fixed', 'Fixed amount'],
               ]}
             />
           </Field>
@@ -151,7 +149,7 @@ export default function IncomeModal({
               />
             </Field>
 
-            <Field label="Typical OT">
+            <Field label="Overtime hours">
               <input
                 type="number"
                 step="0.1"
@@ -165,6 +163,7 @@ export default function IncomeModal({
             <input
               type="number"
               step="0.01"
+              min="0"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               required
@@ -180,7 +179,9 @@ export default function IncomeModal({
           >
             Cancel
           </button>
-          <button className="primary-button">Save</button>
+          <button type="submit" className="primary-button">
+            {item ? 'Save changes' : 'Add income'}
+          </button>
         </div>
       </form>
     </Modal>

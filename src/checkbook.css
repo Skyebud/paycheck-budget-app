@@ -1,0 +1,291 @@
+/* Organized account / checkbook layer */
+
+input[type='date'] {
+  color-scheme: dark;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: .92;
+  filter: invert(1);
+}
+
+input[type='date']::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+:root[data-theme='light'] input[type='date'] {
+  color-scheme: light;
+}
+
+:root[data-theme='light'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
+.account-summary {
+  display: grid;
+  grid-template-columns: minmax(270px, 1.45fr) repeat(3, minmax(150px, .8fr));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 38px;
+}
+
+.account-balance,
+.account-stat {
+  min-height: 132px;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.account-stat {
+  border-left: 1px solid var(--border-soft);
+}
+
+.account-balance > span,
+.account-stat > span,
+.ledger-balance span,
+.transaction-balance span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.account-balance > strong {
+  margin-top: 7px;
+  font-size: 42px;
+  letter-spacing: -.04em;
+}
+
+.account-stat > strong {
+  margin-top: 8px;
+  font-size: 21px;
+}
+
+.account-stat small {
+  margin-top: 5px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.balance-link {
+  margin-top: 7px;
+  font-size: 12px;
+}
+
+.balance-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.balance-editor > span {
+  color: var(--muted);
+  font-size: 22px;
+}
+
+.balance-editor input {
+  width: min(220px, 100%);
+  min-height: 42px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ledger-row {
+  grid-template-columns: 94px minmax(180px, 1fr) 140px 190px;
+}
+
+.transaction-row {
+  grid-template-columns: 94px minmax(180px, 1fr) 130px 130px 145px;
+}
+
+.simple-transaction-row,
+.bill-schedule-row {
+  grid-template-columns: 70px minmax(180px, 1fr) 140px 120px;
+}
+
+.bill-occurrence-row {
+  grid-template-columns: 94px minmax(180px, 1fr) 140px 210px;
+}
+
+.money-positive {
+  color: var(--accent);
+}
+
+.money-negative {
+  color: var(--text);
+}
+
+.ledger-balance,
+.transaction-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.ledger-balance strong,
+.transaction-balance strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-balance-action {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.ledger-balance-action > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.transaction-summary {
+  margin-bottom: 26px;
+}
+
+.bill-actions {
+  gap: 12px;
+  align-items: center;
+}
+
+.linked-label {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.modal-context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.modal-context strong {
+  font-size: 15px;
+}
+
+.modal-context span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .account-summary {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+
+  .account-stat:last-child {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--border-soft);
+    min-height: 92px;
+  }
+
+  .transaction-row {
+    grid-template-columns: 80px minmax(160px, 1fr) 120px 120px;
+  }
+
+  .transaction-row .row-action {
+    grid-column: 2 / -1;
+    padding-bottom: 6px;
+  }
+}
+
+@media (max-width: 800px) {
+  .account-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .account-balance {
+    grid-column: 1 / -1;
+  }
+
+  .account-stat {
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .account-stat:nth-child(2) {
+    border-left: 0;
+  }
+
+  .account-stat:last-child {
+    grid-column: auto;
+    border-left: 1px solid var(--border-soft);
+  }
+
+  .ledger-row,
+  .bill-occurrence-row {
+    grid-template-columns: 80px minmax(140px, 1fr) 120px;
+  }
+
+  .ledger-row .ledger-balance,
+  .bill-occurrence-row .row-action {
+    grid-column: 2 / -1;
+    padding-bottom: 6px;
+  }
+
+  .bill-occurrence-row .row-action {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 620px) {
+  .account-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .account-balance,
+  .account-stat,
+  .account-stat:last-child {
+    grid-column: auto;
+    border-left: 0;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .account-balance {
+    border-top: 0;
+  }
+
+  .account-balance > strong {
+    font-size: 34px;
+  }
+
+  .ledger-row,
+  .transaction-row,
+  .bill-occurrence-row,
+  .simple-transaction-row,
+  .bill-schedule-row {
+    grid-template-columns: 72px minmax(0, 1fr) 100px;
+    gap: 10px;
+  }
+
+  .ledger-row .ledger-balance,
+  .transaction-row .transaction-balance,
+  .transaction-row .row-action,
+  .bill-occurrence-row .row-action,
+  .simple-transaction-row .row-action,
+  .bill-schedule-row .row-action {
+    grid-column: 2 / -1;
+  }
+
+  .transaction-row .transaction-balance {
+    align-items: flex-start;
+    text-align: left;
+  }
+}

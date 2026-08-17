@@ -42,8 +42,9 @@ function TransactionRow({ item, onDelete }) {
       <div className="row-main">
         <strong>{item.name || item.category}</strong>
         <span>
-          {item.category ||
-            (item.type === 'planned' ? 'Planned' : 'Spending')}
+          {item.type === 'planned'
+            ? 'Planned'
+            : item.category || 'Money out'}
         </span>
       </div>
 
@@ -77,7 +78,10 @@ export default function ExpensesPage({
   onDeleteTransaction,
 }) {
   const spending = transactions
-    .filter((transaction) => transaction.type === 'spent')
+    .filter(
+      (transaction) =>
+        transaction.type === 'spent' && !transaction.sourceBillId,
+    )
     .sort((a, b) => b.date.localeCompare(a.date))
 
   const planned = transactions
@@ -101,22 +105,22 @@ export default function ExpensesPage({
   return (
     <div className="page">
       <header className="page-head">
-        <div><h1>Expenses</h1></div>
+        <div><h1>Money Out</h1></div>
 
         <div className="page-actions">
           <button
             type="button"
             className="secondary-button"
-            onClick={onAddSpending}
+            onClick={onAddBill}
           >
-            + Spending
+            + Bill
           </button>
           <button
             type="button"
             className="primary-button"
-            onClick={onAddBill}
+            onClick={onAddSpending}
           >
-            + Bill
+            + Money out
           </button>
         </div>
       </header>
@@ -127,7 +131,7 @@ export default function ExpensesPage({
         items={[
           ['overview', 'Overview'],
           ['bills', 'Bills'],
-          ['spending', 'Spending'],
+          ['spending', 'Purchases'],
           ['planned', 'Planned'],
         ]}
       />
@@ -136,13 +140,13 @@ export default function ExpensesPage({
         <>
           <section className="summary-line">
             <div>
-              <span>Recurring bills</span>
+              <span>Regular bills</span>
               <strong>{money(monthlyBillEstimate)}</strong>
-              <small>Approx. monthly</small>
+              <small>About this much each month</small>
             </div>
 
             <div>
-              <span>Recent spending</span>
+              <span>Recent purchases</span>
               <strong>
                 {money(
                   spending
@@ -250,13 +254,13 @@ export default function ExpensesPage({
       {tab === 'spending' && (
         <section className="section-block flush-top">
           <div className="section-head">
-            <h2>Spending</h2>
+            <h2>Purchases</h2>
             <button
               type="button"
               className="small-button"
               onClick={onAddSpending}
             >
-              Add spending
+              Add money out
             </button>
           </div>
 
@@ -272,8 +276,8 @@ export default function ExpensesPage({
             </div>
           ) : (
             <EmptyState
-              title="No spending recorded."
-              action="Add spending"
+              title="No purchases yet."
+              action="Add money out"
               onAction={onAddSpending}
             />
           )}
@@ -289,7 +293,7 @@ export default function ExpensesPage({
               className="small-button"
               onClick={onAddPlanned}
             >
-              Add planned
+              Plan a purchase
             </button>
           </div>
 
@@ -305,8 +309,8 @@ export default function ExpensesPage({
             </div>
           ) : (
             <EmptyState
-              title="No planned purchases."
-              action="Add planned"
+              title="Nothing planned yet."
+              action="Plan a purchase"
               onAction={onAddPlanned}
             />
           )}

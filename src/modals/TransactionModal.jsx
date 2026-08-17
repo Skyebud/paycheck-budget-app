@@ -1,75 +1,75 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
-import { SPENDING_CATEGORIES } from '../lib/constants'
+import Segmented from '../components/Segmented'
+import {
+  INCOME_CATEGORIES,
+  SPENDING_CATEGORIES,
+} from '../lib/constants'
 import { todayIso } from '../lib/dates'
 import { uid } from '../lib/format'
 
 export default function TransactionModal({
-  mode,
+  mode = 'transaction',
+  item,
   onClose,
   onSave,
 }) {
-  const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState(
-    mode === 'spent' ? 'Food' : 'Planned',
+  const isPlanned = mode === 'planned' || item?.type === 'planned'
+  const [type, setType] = useState(
+    item?.type === 'deposit' ? 'deposit' : 'spent',
   )
-  const [name, setName] = useState('')
-  const [date, setDate] = useState(todayIso())
+  const [amount, setAmount] = useState(item?.amount ?? '')
+  const [category, setCategory] = useState(
+    item?.category || (isPlanned ? 'Shopping' : 'Food'),
+  )
+  const [name, setName] = useState(item?.name || '')
+  const [date, setDate] = useState(item?.date || todayIso())
+
+  useEffect(() => {
+    if (item || isPlanned) return
+    setCategory(type === 'deposit' ? 'Other income' : 'Food')
+  }, [type, item, isPlanned])
+
+  const categories =
+    type === 'deposit' && !isPlanned
+      ? INCOME_CATEGORIES
+      : SPENDING_CATEGORIES
 
   const submit = (event) => {
     event.preventDefault()
 
     onSave({
-      id: uid('txn'),
-      type: mode,
+      ...(item || {}),
+      id: item?.id || uid('txn'),
+      type: isPlanned ? 'planned' : type,
       amount: Number(amount || 0),
       category,
-      name: name.trim() || category,
+      name: name.trim(),
       date,
     })
   }
 
-  return (
-    <Modal
-      title={
-        mode === 'spent' ? 'Add spending' : 'Add planned purchase'
-      }
-      onClose={onClose}
-    >
-      <form className="modal-form" onSubmit={submit}>
-        <Field label="Amount">
-          <input
-            className="amount-input"
-            type="number"
-            step="0.01"
-            autoFocus
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            required
-          />
-        </Field>
+  const title = item
+    ? isPlanned
+      ? 'Edit planned purchase'
+      : 'Edit transaction'
+    : isPlanned
+      ? 'Plan purchase'
+      : 'Add transaction'
 
-        {mode === 'spent' ? (
-          <Field label="Category">
-            <div className="chip-grid">
-              {SPENDING_CATEGORIES.map((item) => (
-                <button
-                  type="button"
-                  key={item}
-                  className={category === item ? 'active' : ''}
-                  onClick={() => setCategory(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </Field>
-        ) : (
-          <Field label="Category">
-            <input
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form className="modal-form" onSubmit={submit}>
+        {!isPlanned && (
+          <Field label="Type">
+            <Segmented
+              value={type}
+              onChange={setType}
+              options={[
+                ['spent', 'Expense'],
+                ['deposit', 'Income'],
+              ]}
             />
           </Field>
         )}
@@ -78,16 +78,52 @@ export default function TransactionModal({
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Optional"
+            placeholder={
+              isPlanned
+                ? 'New monitor, trip, chair...'
+                : type === 'deposit'
+                  ? 'Paycheck, refund, transfer...'
+                  : 'Groceries, gas, lunch...'
+            }
+            required
+            autoFocus
           />
         </Field>
 
-        <Field label="Date">
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
+        <div className="form-grid two">
+          <Field label="Amount">
+            <input
+              className="amount-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              required
+            />
+          </Field>
+
+          <Field label="Date">
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              required
+            />
+          </Field>
+        </div>
+
+        <Field label="Category">
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
+            {categories.map((itemName) => (
+              <option key={itemName} value={itemName}>
+                {itemName}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <div className="modal-actions">
@@ -98,7 +134,9 @@ export default function TransactionModal({
           >
             Cancel
           </button>
-          <button className="primary-button">Add</button>
+          <button type="submit" className="primary-button">
+            {item ? 'Save changes' : isPlanned ? 'Add planned purchase' : 'Add transaction'}
+          </button>
         </div>
       </form>
     </Modal>

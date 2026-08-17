@@ -4,8 +4,9 @@ import Icon from './Icon'
 
 const navItems = [
   ['dashboard', 'dashboard', 'Dashboard'],
+  ['transactions', 'expenses', 'Transactions'],
+  ['bills', 'calendar', 'Bills'],
   ['income', 'income', 'Income'],
-  ['expenses', 'expenses', 'Expenses'],
   ['goals', 'goals', 'Goals'],
 ]
 

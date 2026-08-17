@@ -1,47 +1,122 @@
+import { useEffect, useState } from 'react'
 import EmptyState from '../components/EmptyState'
 import { money, shortDate } from '../lib/format'
 
+function SignedAmount({ value }) {
+  return (
+    <span className={value >= 0 ? 'money-positive' : 'money-negative'}>
+      {value >= 0 ? '+' : '-'}{money(Math.abs(value))}
+    </span>
+  )
+}
+
 export default function Dashboard({
+  currentBalance,
+  projectedBalance,
   nextIncome,
-  cycleEnd,
-  safeToSpend,
   billsTotal,
-  plannedTotal,
-  spentTotal,
-  rows,
-  markBillPaid,
-  onAddIncome,
+  recentActivity,
+  upcomingRows,
+  onSetBalance,
+  onAddTransaction,
   onAddBill,
-  onAddSpending,
+  onAddIncome,
+  onTogglePaid,
 }) {
+  const [editingBalance, setEditingBalance] = useState(false)
+  const [balanceInput, setBalanceInput] = useState(
+    String(Number(currentBalance || 0).toFixed(2)),
+  )
+
+  useEffect(() => {
+    if (!editingBalance) {
+      setBalanceInput(String(Number(currentBalance || 0).toFixed(2)))
+    }
+  }, [currentBalance, editingBalance])
+
+  const saveBalance = (event) => {
+    event.preventDefault()
+    onSetBalance(Number(balanceInput || 0))
+    setEditingBalance(false)
+  }
+
   return (
     <div className="page">
       <header className="page-head compact">
         <div>
           <h1>Dashboard</h1>
-          {nextIncome && (
-            <p>
-              {shortDate(nextIncome.date)} – {shortDate(cycleEnd)}
-            </p>
-          )}
+          <p>Your account at a glance.</p>
         </div>
 
-        <div className="quick-actions">
-          <button type="button" onClick={onAddIncome}>+ Income</button>
-          <button type="button" onClick={onAddBill}>+ Bill</button>
-          <button type="button" onClick={onAddSpending}>+ Spending</button>
+        <div className="page-actions">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={onAddTransaction}
+          >
+            + Transaction
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onAddBill}
+          >
+            + Bill
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onAddIncome}
+          >
+            + Income
+          </button>
         </div>
       </header>
 
-      <section className="balance-strip">
-        <div className="balance-primary">
-          <span>Safe to spend</span>
-          <strong className={safeToSpend < 0 ? 'negative' : ''}>
-            {money(safeToSpend)}
-          </strong>
+      <section className="account-summary">
+        <div className="account-balance">
+          <span>Current balance</span>
+
+          {editingBalance ? (
+            <form className="balance-editor" onSubmit={saveBalance}>
+              <span>$</span>
+              <input
+                type="number"
+                step="0.01"
+                value={balanceInput}
+                onChange={(event) => setBalanceInput(event.target.value)}
+                autoFocus
+              />
+              <button type="submit" className="small-button">Save</button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setEditingBalance(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <>
+              <strong>{money(currentBalance)}</strong>
+              <button
+                type="button"
+                className="text-button balance-link"
+                onClick={() => setEditingBalance(true)}
+              >
+                Update balance
+              </button>
+            </>
+          )}
         </div>
 
-        <div className="balance-stat">
+        <div className="account-stat">
+          <span>Projected balance</span>
+          <strong>{money(projectedBalance)}</strong>
+          <small>After scheduled items</small>
+        </div>
+
+        <div className="account-stat">
           <span>Next income</span>
           <strong>{money(nextIncome?.amount || 0)}</strong>
           <small>
@@ -49,35 +124,21 @@ export default function Dashboard({
           </small>
         </div>
 
-        <div className="balance-stat">
-          <span>Bills</span>
+        <div className="account-stat">
+          <span>Bills before next pay</span>
           <strong>{money(billsTotal)}</strong>
-        </div>
-
-        <div className="balance-stat">
-          <span>Planned</span>
-          <strong>{money(plannedTotal)}</strong>
-        </div>
-
-        <div className="balance-stat">
-          <span>Spent</span>
-          <strong>{money(spentTotal)}</strong>
         </div>
       </section>
 
       <section className="section-block">
         <div className="section-head">
-          <h2>Upcoming</h2>
-          <span>{rows.length} items</span>
+          <h2>Recent transactions</h2>
         </div>
 
-        {rows.length ? (
-          <div className="finance-list">
-            {rows.map((row) => (
-              <div
-                className={`finance-row ${row.paid ? 'muted-row' : ''}`}
-                key={row.key}
-              >
+        {recentActivity.length ? (
+          <div className="finance-list ledger-list">
+            {recentActivity.map((row) => (
+              <div className="finance-row ledger-row" key={row.key}>
                 <div className="row-date">
                   <strong>{shortDate(row.date)}</strong>
                 </div>
@@ -87,16 +148,58 @@ export default function Dashboard({
                   <span>{row.category}</span>
                 </div>
 
-                <div className="row-amount">{money(row.amount)}</div>
+                <div className="row-amount">
+                  <SignedAmount value={row.signedAmount} />
+                </div>
 
-                <div className="row-action">
+                <div className="ledger-balance">
+                  <span>Balance</span>
+                  <strong>{money(row.runningBalance)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No transactions yet." />
+        )}
+      </section>
+
+      <section className="section-block">
+        <div className="section-head">
+          <h2>Upcoming</h2>
+          <span>{Math.min(upcomingRows.length, 8)} shown</span>
+        </div>
+
+        {upcomingRows.length ? (
+          <div className="finance-list ledger-list">
+            {upcomingRows.slice(0, 8).map((row) => (
+              <div className="finance-row ledger-row" key={row.key}>
+                <div className="row-date">
+                  <strong>{shortDate(row.date)}</strong>
+                </div>
+
+                <div className="row-main">
+                  <strong>{row.name}</strong>
+                  <span>{row.category}</span>
+                </div>
+
+                <div className="row-amount">
+                  <SignedAmount value={row.signedAmount} />
+                </div>
+
+                <div className="ledger-balance ledger-balance-action">
+                  <div>
+                    <span>Projected</span>
+                    <strong>{money(row.runningBalance)}</strong>
+                  </div>
+
                   {row.type === 'bill' && (
                     <button
                       type="button"
                       className="small-button"
-                      onClick={() => markBillPaid(row.occurrence)}
+                      onClick={() => onTogglePaid(row.occurrence)}
                     >
-                      {row.paid ? 'Paid' : 'Mark paid'}
+                      Mark paid
                     </button>
                   )}
                 </div>
@@ -104,7 +207,7 @@ export default function Dashboard({
             ))}
           </div>
         ) : (
-          <EmptyState title="Nothing scheduled for this pay period." />
+          <EmptyState title="Nothing scheduled." />
         )}
       </section>
     </div>
