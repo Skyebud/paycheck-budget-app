@@ -5,6 +5,15 @@ import { auth, db } from './firebase'
 const STORAGE_KEY = 'paycheck-budget-v1'
 const MIGRATION_OWNER_KEY = 'paycheck-budget-migration-owner'
 
+const emptyBudget = {
+  setupComplete: false,
+  settings: {},
+  income: [],
+  bills: [],
+  transactions: [],
+  goals: [],
+}
+
 export default function CloudBudgetGate({ children }) {
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
@@ -17,152 +26,76 @@ export default function CloudBudgetGate({ children }) {
 
     async function start() {
       const user = auth.currentUser
-
       if (!user) return
 
       const budgetRef = doc(db, 'users', user.uid, 'budget', 'main')
       const profileRef = doc(db, 'users', user.uid)
-
       const snapshot = await getDoc(budgetRef)
 
-      // Returning user: load their Firestore budget
       if (snapshot.exists()) {
-        const cloudData = snapshot.data()
-        const json = JSON.stringify(cloudData)
-
+        const json = JSON.stringify(snapshot.data())
         localStorage.setItem(STORAGE_KEY, json)
         localStorage.setItem(MIGRATION_OWNER_KEY, user.uid)
-
         lastSaved.current = json
-
         if (!cancelled) setStatus('ready')
-        return
-      }
+      } else {
+        const existing = localStorage.getItem(STORAGE_KEY)
+        const migrationOwner = localStorage.getItem(MIGRATION_OWNER_KEY)
+        let initial = emptyBudget
 
-      // New Firestore account: check whether THIS user owns
-      // the existing browser budget.
-      const existing = localStorage.getItem(STORAGE_KEY)
-      const migrationOwner = localStorage.getItem(MIGRATION_OWNER_KEY)
+        if (existing && (!migrationOwner || migrationOwner === user.uid)) {
+          try { initial = JSON.parse(existing) } catch { initial = emptyBudget }
+        }
 
-      // First migration on this browser.
-      // This lets us move your existing budget into your new account.
-      if (existing && !migrationOwner) {
-        const parsed = JSON.parse(existing)
-
-        await setDoc(budgetRef, parsed)
-
-        await setDoc(
-          profileRef,
-          {
-            setupComplete: true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        )
-
+        const json = JSON.stringify(initial)
+        localStorage.setItem(STORAGE_KEY, json)
         localStorage.setItem(MIGRATION_OWNER_KEY, user.uid)
-        lastSaved.current = existing
-
+        await setDoc(budgetRef, initial)
+        await setDoc(profileRef, {
+          setupComplete: initial.setupComplete === true || Boolean(initial.paychecks?.length || initial.income?.length || initial.bills?.length),
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+        lastSaved.current = json
         if (!cancelled) setStatus('ready')
-        return
       }
 
-      // Existing browser budget belongs to this same user
-      if (existing && migrationOwner === user.uid) {
-        const parsed = JSON.parse(existing)
+      syncTimer = window.setInterval(async () => {
+        if (saving.current) return
+        const current = localStorage.getItem(STORAGE_KEY)
+        if (!current || current === lastSaved.current) return
 
-        await setDoc(budgetRef, parsed)
-
-        lastSaved.current = existing
-
-        if (!cancelled) setStatus('ready')
-        return
-      }
-
-      // Different/new account: do NOT reuse somebody else's browser data
-      localStorage.removeItem(STORAGE_KEY)
-
-      if (!cancelled) setStatus('setup')
+        try {
+          const parsed = JSON.parse(current)
+          saving.current = true
+          await setDoc(budgetRef, parsed)
+          await setDoc(profileRef, {
+            setupComplete: parsed.setupComplete === true,
+            updatedAt: serverTimestamp(),
+          }, { merge: true })
+          lastSaved.current = current
+        } catch (err) {
+          console.error('Budget sync failed:', err)
+        } finally {
+          saving.current = false
+        }
+      }, 700)
     }
 
     start().catch((err) => {
       console.error(err)
-      setError('Unable to load your budget.')
-      setStatus('error')
-    })
-
-    // Temporary bridge:
-    // watches the existing app's local data and syncs changes to Firestore.
-    syncTimer = window.setInterval(async () => {
-      const user = auth.currentUser
-
-      if (!user || saving.current) return
-
-      const current = localStorage.getItem(STORAGE_KEY)
-
-      if (!current || current === lastSaved.current) return
-
-      try {
-        saving.current = true
-
-        await setDoc(
-          doc(db, 'users', user.uid, 'budget', 'main'),
-          JSON.parse(current),
-        )
-
-        lastSaved.current = current
-      } catch (err) {
-        console.error('Budget sync failed:', err)
-      } finally {
-        saving.current = false
+      if (!cancelled) {
+        setError('Unable to load your budget.')
+        setStatus('error')
       }
-    }, 1000)
+    })
 
     return () => {
       cancelled = true
-      window.clearInterval(syncTimer)
+      if (syncTimer) window.clearInterval(syncTimer)
     }
   }, [])
 
-  if (status === 'loading') {
-    return (
-      <div className="auth-loading">
-        <div className="auth-loader" />
-      </div>
-    )
-  }
-
-  if (status === 'error') {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <h2>{error}</h2>
-        </section>
-      </main>
-    )
-  }
-
-  if (status === 'setup') {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <div className="auth-brand">
-            <div className="auth-logo">$</div>
-            <div>
-              <h1>Paycheck</h1>
-              <span>Budget</span>
-            </div>
-          </div>
-
-          <div className="auth-heading">
-            <h2>Set up your budget</h2>
-          </div>
-
-          <p>Your account is ready. We'll set up your income and expenses next.</p>
-        </section>
-      </main>
-    )
-  }
-
+  if (status === 'loading') return <div className="auth-loading"><div className="auth-loader" /></div>
+  if (status === 'error') return <main className="auth-page"><section className="auth-card"><h2>{error}</h2></section></main>
   return children
 }

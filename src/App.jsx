@@ -1,103 +1,122 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { initialData } from './data'
-import { longDate, money, shortDate, uid, weekday } from './utils'
+import { useEffect, useMemo, useState } from 'react'
+import { signOut } from 'firebase/auth'
+import { auth } from './firebase'
+import { money, shortDate, uid, weekday } from './utils'
 
 const STORAGE_KEY = 'paycheck-budget-v1'
 
+const DEFAULT_SETTINGS = {
+  hourlyRate: 22.28,
+  overtimeMultiplier: 1.5,
+  estimatedNetPercent: 83,
+  autoLearnNet: true,
+  safetyBuffer: 250,
+  themeMode: 'dark',
+  accentTheme: 'mint',
+}
+
+const SPENDING_CATEGORIES = ['Food', 'Gas', 'Shopping', 'Entertainment', 'Health', 'Other']
+const BILL_CATEGORIES = ['Housing', 'Utilities', 'Insurance', 'Debt', 'Subscriptions', 'Transportation', 'Other']
+
+const toDate = (iso) => new Date(`${iso}T12:00:00`)
+const toIso = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const todayIso = () => toIso(new Date())
+const addDays = (iso, days) => {
+  const date = toDate(iso)
+  date.setDate(date.getDate() + days)
+  return toIso(date)
+}
+const lastDayOfMonth = (year, month) => new Date(year, month + 1, 0).getDate()
+
 function Icon({ name }) {
   const paths = {
-    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
-    paychecks: <><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></>,
-    bills: <><path d="M6 2h9l3 3v17l-3-2-3 2-3-2-3 2V2Z"/><path d="M9 9h6M9 13h6M9 17h3"/></>,
-    transactions: <><path d="M7 7h12l-3-3M17 17H5l3 3"/><path d="M19 7l-3 3M5 17l3-3"/></>,
-    goals: <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></>,
-    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06-2.78 2.78-.06-.06A1.8 1.8 0 0 0 15 19.4a1.8 1.8 0 0 0-1 .6 1.8 1.8 0 0 0-.4 1.17V21H10.4v-.09A1.8 1.8 0 0 0 9 19.4a1.8 1.8 0 0 0-1.98.36l-.06.06-2.78-2.78.06-.06A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-.6-1 1.8 1.8 0 0 0-1.17-.4H3V10.4h.09A1.8 1.8 0 0 0 4.6 9a1.8 1.8 0 0 0-.36-1.98l-.06-.06 2.78-2.78.06.06A1.8 1.8 0 0 0 9 4.6a1.8 1.8 0 0 0 1-.6 1.8 1.8 0 0 0 .4-1.17V3h3.2v.09A1.8 1.8 0 0 0 15 4.6a1.8 1.8 0 0 0 1.98-.36l.06-.06 2.78 2.78-.06.06A1.8 1.8 0 0 0 19.4 9c.14.4.37.74.68 1 .32.25.71.4 1.12.4H21v3.2h-.09A1.8 1.8 0 0 0 19.4 15Z"/></>,
-    plus: <path d="M12 5v14M5 12h14"/>,
-    wallet: <><path d="M4 6a2 2 0 0 1 2-2h12v16H6a2 2 0 0 1-2-2V6Z"/><path d="M16 11h5v5h-5a2.5 2.5 0 0 1 0-5Z"/></>,
-    check: <path d="m5 12 4 4L19 6"/>,
-    close: <path d="m6 6 12 12M18 6 6 18"/>,
-    download: <><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></>,
-    reset: <><path d="M4 4v6h6"/><path d="M5.6 15A8 8 0 1 0 6 7.5L4 10"/></>,
-    calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></>,
-    repeat: <><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></>,
-    edit: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></>,
-    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    income: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18" /><path d="M7 15h4" /></>,
+    expenses: <><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+    goals: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l-2.78 2.78A1.8 1.8 0 0 0 15 19.4a1.8 1.8 0 0 0-1.4 1.51V21h-3.2v-.09A1.8 1.8 0 0 0 9 19.4a1.8 1.8 0 0 0-1.98.36l-2.78-2.78A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-1.51-1.4H3v-3.2h.09A1.8 1.8 0 0 0 4.6 9a1.8 1.8 0 0 0-.36-1.98l2.78-2.78A1.8 1.8 0 0 0 9 4.6a1.8 1.8 0 0 0 1.4-1.51V3h3.2v.09A1.8 1.8 0 0 0 15 4.6a1.8 1.8 0 0 0 1.98-.36l2.78 2.78A1.8 1.8 0 0 0 19.4 9a1.8 1.8 0 0 0 1.51 1.4H21v3.2h-.09A1.8 1.8 0 0 0 19.4 15Z" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    close: <path d="m6 6 12 12M18 6 6 18" />,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+    logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
   }
   return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
-const navItems = [
-  ['dashboard', 'Dashboard'],
-  ['paychecks', 'Income'],
-  ['bills', 'Bills'],
-  ['transactions', 'Spending'],
-  ['goals', 'Goals'],
-  ['settings', 'Settings'],
-]
-
-const toDate = (iso) => new Date(`${iso}T12:00:00`)
-const toIso = (date) => {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-const addDays = (iso, days) => {
-  const d = toDate(iso)
-  d.setDate(d.getDate() + days)
-  return toIso(d)
-}
-const todayIso = () => toIso(new Date())
-
 function normalizeData(raw) {
-  const source = raw || initialData
+  const source = raw && typeof raw === 'object' ? raw : {}
+  const settings = { ...DEFAULT_SETTINGS, ...(source.settings || {}) }
+
+  const migratedIncome = Array.isArray(source.income)
+    ? source.income
+    : (Array.isArray(source.paychecks) ? source.paychecks : []).map((paycheck) => ({
+        id: paycheck.id || uid('income'),
+        name: paycheck.label || 'Paycheck',
+        kind: 'paycheck',
+        recurrence: 'once',
+        firstDate: paycheck.date,
+        payMode: 'hourly',
+        hourlyRate: settings.hourlyRate,
+        regularHours: Number(paycheck.regularHours || 0),
+        overtimeHours: Number(paycheck.overtimeHours || 0),
+        overtimeMultiplier: settings.overtimeMultiplier,
+        expectedNet: Number(paycheck.expectedNet || 0),
+        actuals: paycheck.actualNet != null
+          ? { [paycheck.date]: { actualNet: Number(paycheck.actualNet), regularHours: Number(paycheck.regularHours || 0), overtimeHours: Number(paycheck.overtimeHours || 0) } }
+          : {},
+      }))
+
   return {
-    ...initialData,
-    ...source,
-    settings: { ...initialData.settings, ...(source.settings || {}) },
-    paychecks: Array.isArray(source.paychecks) ? source.paychecks : initialData.paychecks,
-    transactions: Array.isArray(source.transactions) ? source.transactions : initialData.transactions,
-    goals: Array.isArray(source.goals) ? source.goals : initialData.goals,
-    bills: (Array.isArray(source.bills) ? source.bills : initialData.bills).map((b) => ({
-      ...b,
-      scheduleType: b.scheduleType || 'once',
-      paidDates: b.paidDates || (b.paid && b.dueDate ? [b.dueDate] : []),
+    setupComplete: source.setupComplete !== false && (migratedIncome.length > 0 || (source.bills || []).length > 0 || source.setupComplete === true),
+    settings,
+    income: migratedIncome.map((item) => ({ actuals: {}, recurrence: 'once', kind: 'other', ...item })),
+    bills: (Array.isArray(source.bills) ? source.bills : []).map((bill) => ({
+      ...bill,
+      scheduleType: bill.scheduleType || 'once',
+      anchorDate: bill.anchorDate || bill.dueDate,
+      paidDates: Array.isArray(bill.paidDates) ? bill.paidDates : [],
     })),
+    transactions: Array.isArray(source.transactions) ? source.transactions : [],
+    goals: Array.isArray(source.goals) ? source.goals : [],
   }
 }
 
-function lastDayOfMonth(year, monthIndex) {
-  return new Date(year, monthIndex + 1, 0).getDate()
-}
-
-function billOccurrences(bill, startIso, endIso) {
-  if (!startIso || !endIso) return []
-  const out = []
+function scheduleOccurrences(item, startIso, endIso, recurrenceKey = 'recurrence', dateKey = 'firstDate') {
+  const recurrence = item[recurrenceKey] || 'once'
+  const anchor = item[dateKey] || item.anchorDate || item.dueDate
+  if (!anchor || !startIso || !endIso) return []
+  const output = []
   const push = (date) => {
-    if (date >= startIso && date <= endIso) out.push({ billId: bill.id, dueDate: date })
+    if (date >= startIso && date <= endIso) output.push(date)
   }
 
-  if (bill.scheduleType === 'once') {
-    if (bill.dueDate) push(bill.dueDate)
-    return out
+  if (recurrence === 'once') {
+    push(anchor)
+    return output
   }
 
-  const anchor = bill.anchorDate || bill.dueDate || startIso
-  if (bill.scheduleType === 'weekly' || bill.scheduleType === 'biweekly') {
-    const step = bill.scheduleType === 'weekly' ? 7 : 14
+  if (recurrence === 'weekly' || recurrence === 'biweekly') {
+    const step = recurrence === 'weekly' ? 7 : 14
     let cursor = anchor
     while (cursor < startIso) cursor = addDays(cursor, step)
     while (cursor <= endIso) {
       push(cursor)
       cursor = addDays(cursor, step)
     }
-    return out
+    return output
   }
 
-  if (bill.scheduleType === 'monthly') {
+  if (recurrence === 'monthly') {
     const start = toDate(startIso)
     const end = toDate(endIso)
-    const day = Math.max(1, Math.min(31, Number(bill.dayOfMonth || toDate(anchor).getDate())))
+    const anchorDate = toDate(anchor)
+    const day = anchorDate.getDate()
     let year = start.getFullYear()
     let month = start.getMonth()
     while (year < end.getFullYear() || (year === end.getFullYear() && month <= end.getMonth())) {
@@ -105,445 +124,660 @@ function billOccurrences(bill, startIso, endIso) {
       const iso = toIso(date)
       if (iso >= anchor) push(iso)
       month += 1
-      if (month > 11) { month = 0; year += 1 }
+      if (month > 11) {
+        month = 0
+        year += 1
+      }
     }
-    return out
+    return output
   }
 
-  if (bill.scheduleType === 'yearly') {
+  if (recurrence === 'yearly') {
     const a = toDate(anchor)
-    const start = toDate(startIso)
-    const end = toDate(endIso)
-    for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1) {
+    for (let year = toDate(startIso).getFullYear(); year <= toDate(endIso).getFullYear(); year += 1) {
       const date = new Date(year, a.getMonth(), Math.min(a.getDate(), lastDayOfMonth(year, a.getMonth())))
       const iso = toIso(date)
       if (iso >= anchor) push(iso)
     }
   }
-  return out
+
+  return output
 }
 
-function scheduleLabel(bill) {
-  if (bill.scheduleType === 'monthly') return `Monthly on the ${ordinal(Number(bill.dayOfMonth || 1))}`
-  if (bill.scheduleType === 'weekly') return `Every ${weekday(bill.anchorDate || bill.dueDate)}`
-  if (bill.scheduleType === 'biweekly') return `Every other ${weekday(bill.anchorDate || bill.dueDate)}`
-  if (bill.scheduleType === 'yearly') return `Yearly on ${shortDate(bill.anchorDate || bill.dueDate)}`
-  return 'One-time payment'
+function recurrenceLabel(value, firstDate) {
+  if (value === 'weekly') return `Weekly · ${weekday(firstDate)}`
+  if (value === 'biweekly') return `Every 2 weeks · ${weekday(firstDate)}`
+  if (value === 'monthly') return `Monthly · day ${toDate(firstDate).getDate()}`
+  if (value === 'yearly') return 'Yearly'
+  return 'One-time'
 }
 
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
-}
-
-function Modal({ title, children, onClose }) {
+function Modal({ title, children, onClose, wide = false }) {
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="modal-head"><h3>{title}</h3><button className="icon-btn" onClick={onClose}><Icon name="close" /></button></div>
+    <section className={`modal ${wide ? 'modal-wide' : ''}`} onMouseDown={(event) => event.stopPropagation()}>
+      <header className="modal-head">
+        <h2>{title}</h2>
+        <button className="icon-button" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+      </header>
       {children}
-    </div>
+    </section>
   </div>
 }
 
-function Progress({ value }) {
-  return <div className="progress"><div style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div>
+function Segmented({ value, onChange, options }) {
+  return <div className="segmented">
+    {options.map(([optionValue, label]) => (
+      <button key={optionValue} type="button" className={value === optionValue ? 'active' : ''} onClick={() => onChange(optionValue)}>{label}</button>
+    ))}
+  </div>
+}
+
+function Tabs({ value, onChange, items }) {
+  return <div className="tabs">
+    {items.map(([key, label]) => <button key={key} className={value === key ? 'active' : ''} onClick={() => onChange(key)}>{label}</button>)}
+  </div>
+}
+
+function EmptyState({ title, action, onAction }) {
+  return <div className="empty-state">
+    <strong>{title}</strong>
+    {action && <button className="text-button" onClick={onAction}>{action}</button>}
+  </div>
 }
 
 function App() {
   const [data, setData] = useState(() => {
-    try { return normalizeData(JSON.parse(localStorage.getItem(STORAGE_KEY))) } catch { return normalizeData(initialData) }
+    try { return normalizeData(JSON.parse(localStorage.getItem(STORAGE_KEY))) } catch { return normalizeData({}) }
   })
   const [view, setView] = useState('dashboard')
-  const [selectedPaycheckId, setSelectedPaycheckId] = useState(data.paychecks[0]?.id)
+  const [incomeTab, setIncomeTab] = useState('overview')
+  const [expenseTab, setExpenseTab] = useState('overview')
   const [modal, setModal] = useState(null)
+  const [editingIncome, setEditingIncome] = useState(null)
   const [editingBill, setEditingBill] = useState(null)
-  const [purchaseAmount, setPurchaseAmount] = useState('')
+  const [actualTarget, setActualTarget] = useState(null)
 
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(data)), [data])
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  }, [data])
+
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.themeMode || 'dark'
     document.documentElement.dataset.accent = data.settings.accentTheme || 'mint'
   }, [data.settings.themeMode, data.settings.accentTheme])
 
-  const sortedPaychecks = useMemo(() => [...data.paychecks].sort((a, b) => a.date.localeCompare(b.date)), [data.paychecks])
-  const selected = sortedPaychecks.find(p => p.id === selectedPaycheckId) || sortedPaychecks[0]
+  const occurrenceRange = useMemo(() => ({ start: addDays(todayIso(), -365), end: addDays(todayIso(), 550) }), [])
 
-  const paycheckWindow = (paycheck) => {
-    const index = sortedPaychecks.findIndex(p => p.id === paycheck.id)
-    const next = sortedPaychecks[index + 1]
-    return { start: paycheck.date, end: next ? addDays(next.date, -1) : addDays(paycheck.date, 13) }
-  }
+  const learnedNetPercent = useMemo(() => {
+    let actualNetTotal = 0
+    let grossTotal = 0
+    data.income.filter((item) => item.kind === 'paycheck').forEach((item) => {
+      Object.values(item.actuals || {}).forEach((actual) => {
+        if (actual.actualNet == null) return
+        const rate = Number(item.hourlyRate || data.settings.hourlyRate || 0)
+        const regular = Number(actual.regularHours ?? item.regularHours ?? 0)
+        const overtime = Number(actual.overtimeHours ?? item.overtimeHours ?? 0)
+        const multiplier = Number(item.overtimeMultiplier || data.settings.overtimeMultiplier || 1.5)
+        const gross = item.payMode === 'fixed'
+          ? Number(item.grossAmount || item.amount || 0)
+          : regular * rate + overtime * rate * multiplier
+        if (gross > 0) {
+          grossTotal += gross
+          actualNetTotal += Number(actual.actualNet)
+        }
+      })
+    })
+    return grossTotal > 0 ? (actualNetTotal / grossTotal) * 100 : null
+  }, [data.income, data.settings])
 
-  const occurrencesForPaycheck = (paycheck) => {
-    if (!paycheck) return []
-    const { start, end } = paycheckWindow(paycheck)
-    return data.bills.flatMap(bill => billOccurrences(bill, start, end).map(o => ({ ...o, bill })))
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-  }
-
-  const selectedOccurrences = useMemo(() => selected ? occurrencesForPaycheck(selected) : [], [selected, data.bills, sortedPaychecks])
-
-  const grossForPaycheck = (paycheck) => paycheck
-    ? Number(paycheck.regularHours || 0) * data.settings.hourlyRate + Number(paycheck.overtimeHours || 0) * data.settings.hourlyRate * data.settings.overtimeMultiplier
-    : 0
-
-  const actualPaychecks = sortedPaychecks.filter(p => p.actualNet != null && grossForPaycheck(p) > 0)
-  const learnedNetPercent = actualPaychecks.length
-    ? (actualPaychecks.reduce((sum, p) => sum + Number(p.actualNet), 0) / actualPaychecks.reduce((sum, p) => sum + grossForPaycheck(p), 0)) * 100
-    : null
   const effectiveNetPercent = data.settings.autoLearnNet !== false && learnedNetPercent != null
     ? learnedNetPercent
-    : Number(data.settings.estimatedNetPercent || 0)
+    : Number(data.settings.estimatedNetPercent || 83)
 
-  const projectedNetForPaycheck = (paycheck) => {
-    if (!paycheck) return 0
-    if (paycheck.actualNet != null) return Number(paycheck.actualNet)
-    const calculatedGross = grossForPaycheck(paycheck)
-    if (calculatedGross > 0) return calculatedGross * (effectiveNetPercent / 100)
-    return Number(paycheck.expectedNet || 0)
+  const projectedIncomeAmount = (item, date) => {
+    const actual = item.actuals?.[date]
+    if (actual?.actualNet != null) return Number(actual.actualNet)
+    if (item.kind !== 'paycheck') return Number(item.amount || 0)
+    if (item.payMode === 'fixed') return Number(item.expectedNet || item.amount || 0)
+    const rate = Number(item.hourlyRate || data.settings.hourlyRate || 0)
+    const regular = Number(item.regularHours || 0)
+    const overtime = Number(item.overtimeHours || 0)
+    const multiplier = Number(item.overtimeMultiplier || data.settings.overtimeMultiplier || 1.5)
+    const gross = regular * rate + overtime * rate * multiplier
+    if (gross > 0) return gross * (effectiveNetPercent / 100)
+    return Number(item.expectedNet || 0)
   }
 
-  const paycheckStats = useMemo(() => {
-    if (!selected) return { net: 0, bills: 0, planned: 0, spent: 0, safe: 0 }
-    const net = projectedNetForPaycheck(selected)
-    const bills = selectedOccurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((s, o) => s + Number(o.bill.amount), 0)
-    const planned = data.transactions.filter(t => t.paycheckId === selected.id && t.type === 'planned').reduce((s, t) => s + Number(t.amount), 0)
-    const spent = data.transactions.filter(t => t.paycheckId === selected.id && t.type === 'spent').reduce((s, t) => s + Number(t.amount), 0)
-    return { net, bills, planned, spent, safe: net - bills - planned - spent }
-  }, [selected, selectedOccurrences, data.transactions, effectiveNetPercent, data.settings.hourlyRate, data.settings.overtimeMultiplier])
+  const incomeOccurrences = useMemo(() => {
+    return data.income.flatMap((item) =>
+      scheduleOccurrences(item, occurrenceRange.start, occurrenceRange.end).map((date) => ({
+        key: `${item.id}:${date}`,
+        item,
+        date,
+        amount: projectedIncomeAmount(item, date),
+        actual: item.actuals?.[date],
+      })),
+    ).sort((a, b) => a.date.localeCompare(b.date))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.income, data.settings, effectiveNetPercent, occurrenceRange])
 
-  const gross = grossForPaycheck(selected)
-  const estimatedFromHours = gross * (effectiveNetPercent / 100)
-  const afterPurchase = paycheckStats.safe - Number(purchaseAmount || 0)
+  const billOccurrences = useMemo(() => {
+    return data.bills.flatMap((bill) =>
+      scheduleOccurrences({ ...bill, recurrence: bill.scheduleType, firstDate: bill.anchorDate || bill.dueDate }, occurrenceRange.start, occurrenceRange.end).map((date) => ({
+        key: `${bill.id}:${date}`,
+        bill,
+        date,
+        paid: bill.paidDates?.includes(date),
+      })),
+    ).sort((a, b) => a.date.localeCompare(b.date))
+  }, [data.bills, occurrenceRange])
 
-  const upcomingOccurrences = useMemo(() => {
-    const start = todayIso()
-    const end = sortedPaychecks.length ? addDays(sortedPaychecks.at(-1).date, 60) : addDays(start, 90)
-    return data.bills.flatMap(bill => billOccurrences(bill, start, end).map(o => ({ ...o, bill })))
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-  }, [data.bills, sortedPaychecks])
+  const futureIncome = incomeOccurrences.filter((occurrence) => occurrence.date >= todayIso())
+  const nextIncome = futureIncome[0]
+  const followingIncome = futureIncome[1]
+  const cycleStart = nextIncome?.date || todayIso()
+  const cycleEnd = followingIncome ? addDays(followingIncome.date, -1) : addDays(cycleStart, 13)
+  const cycleBills = billOccurrences.filter((occurrence) => occurrence.date >= cycleStart && occurrence.date <= cycleEnd)
+  const unpaidCycleBills = cycleBills.filter((occurrence) => !occurrence.paid)
+  const cycleTransactions = data.transactions.filter((transaction) => transaction.date >= cycleStart && transaction.date <= cycleEnd)
+  const plannedCycle = cycleTransactions.filter((transaction) => transaction.type === 'planned')
+  const spentCycle = cycleTransactions.filter((transaction) => transaction.type === 'spent')
+  const billsTotal = unpaidCycleBills.reduce((sum, occurrence) => sum + Number(occurrence.bill.amount || 0), 0)
+  const plannedTotal = plannedCycle.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0)
+  const spentTotal = spentCycle.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0)
+  const nextIncomeAmount = Number(nextIncome?.amount || 0)
+  const safeToSpend = nextIncomeAmount - billsTotal - plannedTotal - spentTotal
 
-  const nextDueFor = (bill) => {
-    const start = todayIso()
-    return billOccurrences(bill, start, addDays(start, 370))[0]?.dueDate || null
-  }
+  const upcomingRows = [
+    ...cycleBills.map((occurrence) => ({
+      key: occurrence.key,
+      date: occurrence.date,
+      name: occurrence.bill.name,
+      category: occurrence.bill.category || 'Bill',
+      amount: Number(occurrence.bill.amount || 0),
+      type: 'bill',
+      paid: occurrence.paid,
+      occurrence,
+    })),
+    ...plannedCycle.map((transaction) => ({
+      key: transaction.id,
+      date: transaction.date,
+      name: transaction.name,
+      category: 'Planned',
+      amount: Number(transaction.amount || 0),
+      type: 'planned',
+    })),
+  ].sort((a, b) => a.date.localeCompare(b.date))
 
-  const update = (key, id, patch) => setData(d => ({ ...d, [key]: d[key].map(item => item.id === id ? { ...item, ...patch } : item) }))
-  const remove = (key, id) => setData(d => ({ ...d, [key]: d[key].filter(item => item.id !== id) }))
+  const updateSettings = (patch) => setData((current) => ({ ...current, settings: { ...current.settings, ...patch } }))
 
-  const toggleOccurrencePaid = (billId, dueDate) => {
-    setData(d => ({
-      ...d,
-      bills: d.bills.map(b => {
-        if (b.id !== billId) return b
-        const paidDates = b.paidDates || []
-        return { ...b, paidDates: paidDates.includes(dueDate) ? paidDates.filter(x => x !== dueDate) : [...paidDates, dueDate] }
-      }),
+  const markBillPaid = (occurrence) => {
+    setData((current) => ({
+      ...current,
+      bills: current.bills.map((bill) => bill.id === occurrence.bill.id
+        ? { ...bill, paidDates: bill.paidDates.includes(occurrence.date) ? bill.paidDates.filter((date) => date !== occurrence.date) : [...bill.paidDates, occurrence.date] }
+        : bill),
     }))
   }
 
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'budget-backup.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const deleteIncome = (id) => setData((current) => ({ ...current, income: current.income.filter((item) => item.id !== id) }))
+  const deleteBill = (id) => setData((current) => ({ ...current, bills: current.bills.filter((bill) => bill.id !== id) }))
+  const deleteTransaction = (id) => setData((current) => ({ ...current, transactions: current.transactions.filter((transaction) => transaction.id !== id) }))
 
-  const resetData = () => {
-    if (confirm('Reset your budget back to the original sample data?')) {
-      setData(normalizeData(initialData))
-      setSelectedPaycheckId(initialData.paychecks[0].id)
-      setView('dashboard')
-    }
-  }
-
-  const saveBill = (item) => {
-    setData(d => ({
-      ...d,
-      bills: editingBill ? d.bills.map(b => b.id === editingBill.id ? { ...item, id: editingBill.id, paidDates: editingBill.paidDates || [] } : b) : [...d.bills, item],
-    }))
-    setEditingBill(null)
-    setModal(null)
+  if (!data.setupComplete) {
+    return <SetupScreen data={data} setData={setData} />
   }
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brand-mark">P</div><div><strong>Paycheck</strong><span>Budget</span></div></div>
-      <nav>{navItems.map(([id, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span></button>)}</nav>
+      <div className="brand-mark">P</div>
+      <nav className="primary-nav">
+        {[
+          ['dashboard', 'dashboard', 'Dashboard'],
+          ['income', 'income', 'Income'],
+          ['expenses', 'expenses', 'Expenses'],
+          ['goals', 'goals', 'Goals'],
+        ].map(([key, icon, label]) => (
+          <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}><Icon name={icon} /><span>{label}</span></button>
+        ))}
+      </nav>
+      <div className="sidebar-bottom">
+        <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}><Icon name="settings" /><span>Settings</span></button>
+        <button onClick={() => signOut(auth)}><Icon name="logout" /><span>Sign out</span></button>
+      </div>
     </aside>
 
-    <main className="content">
-      <header className="topbar">
-        <div><h1>{navItems.find(n => n[0] === view)?.[1]}</h1></div>
-        <div className="top-actions">
-          <select value={selectedPaycheckId} onChange={e => setSelectedPaycheckId(e.target.value)}>
-            {sortedPaychecks.map(p => <option key={p.id} value={p.id}>{shortDate(p.date)} · {money(projectedNetForPaycheck(p))}</option>)}
-          </select>
-          <button className="primary" onClick={() => setModal('quickSpend')}><Icon name="plus"/> Add spending</button>
-        </div>
-      </header>
+    <main className="main-content">
+      {view === 'dashboard' && <Dashboard
+        nextIncome={nextIncome}
+        cycleEnd={cycleEnd}
+        safeToSpend={safeToSpend}
+        billsTotal={billsTotal}
+        plannedTotal={plannedTotal}
+        spentTotal={spentTotal}
+        rows={upcomingRows}
+        markBillPaid={markBillPaid}
+        onAddIncome={() => { setEditingIncome(null); setModal('income') }}
+        onAddBill={() => { setEditingBill(null); setModal('bill') }}
+        onAddSpending={() => setModal('spending')}
+      />}
 
-      {view === 'dashboard' && <>
-        <section className="hero-grid">
-          <div className="safe-card">
-            <div className="safe-top"><span>SAFE TO SPEND</span><div className={`status ${paycheckStats.safe >= data.settings.safetyBuffer ? 'good' : 'warn'}`}>{paycheckStats.safe >= data.settings.safetyBuffer ? 'On track' : 'Below buffer'}</div></div>
-            <div className="safe-amount">{money(paycheckStats.safe)}</div>
-            <p>{selected?.label}</p>
-            <div className="safe-breakdown">
-              <div><span>Income</span><strong>{money(paycheckStats.net)}</strong></div>
-              <div><span>Bills</span><strong>−{money(paycheckStats.bills)}</strong></div>
-              <div><span>Planned</span><strong>−{money(paycheckStats.planned)}</strong></div>
-              <div><span>Spent</span><strong>−{money(paycheckStats.spent)}</strong></div>
-            </div>
-          </div>
+      {view === 'income' && <IncomePage
+        tab={incomeTab}
+        setTab={setIncomeTab}
+        income={data.income}
+        occurrences={incomeOccurrences}
+        effectiveNetPercent={effectiveNetPercent}
+        learnedNetPercent={learnedNetPercent}
+        onAdd={() => { setEditingIncome(null); setModal('income') }}
+        onEdit={(item) => { setEditingIncome(item); setModal('income') }}
+        onDelete={deleteIncome}
+        onRecord={(occurrence) => { setActualTarget(occurrence); setModal('actual') }}
+      />}
 
-          <div className="card paycheck-card">
-            <div className="card-title"><div><h2>{selected?.label}</h2></div><Icon name="wallet"/></div>
-            <div className="big-secondary">{money(projectedNetForPaycheck(selected))}</div>
-            <p>{selected ? longDate(selected.date) : ''}</p>
-            <div className="mini-grid"><div><span>Gross estimate</span><b>{money(gross)}</b></div><div><span>Take-home estimate</span><b>{money(estimatedFromHours)}</b></div></div>
-          </div>
-        </section>
+      {view === 'expenses' && <ExpensesPage
+        tab={expenseTab}
+        setTab={setExpenseTab}
+        bills={data.bills}
+        billOccurrences={billOccurrences}
+        transactions={data.transactions}
+        onAddBill={() => { setEditingBill(null); setModal('bill') }}
+        onEditBill={(bill) => { setEditingBill(bill); setModal('bill') }}
+        onDeleteBill={deleteBill}
+        onTogglePaid={markBillPaid}
+        onAddSpending={() => setModal('spending')}
+        onAddPlanned={() => setModal('planned')}
+        onDeleteTransaction={deleteTransaction}
+      />}
 
-        <section className="dashboard-grid dashboard-priority-grid">
-          <div className="card span-2 bills-priority-card">
-            <div className="section-head"><div><h2>Upcoming bills</h2></div><button className="text-btn" onClick={() => setView('bills')}>Manage</button></div>
-            <div className="item-list">
-              {selectedOccurrences.length === 0 && <div className="empty-state">No bills are due from this paycheck.</div>}
-              {selectedOccurrences.map(({ bill, dueDate }) => {
-                const paid = bill.paidDates.includes(dueDate)
-                return <div className="list-row" key={`${bill.id}-${dueDate}`}>
-                  <button className={`check ${paid ? 'done' : ''}`} onClick={() => toggleOccurrencePaid(bill.id, dueDate)}>{paid && <Icon name="check"/>}</button>
-                  <div className="row-main"><strong>{bill.name}</strong><span>{shortDate(dueDate)} · {scheduleLabel(bill)}</span></div>
-                  <strong>{money(bill.amount)}</strong>
-                </div>
-              })}
-            </div>
-          </div>
-
-          <div className="card spending-summary-card">
-            <div className="section-head"><div><h2>Spending</h2></div><button className="text-btn" onClick={() => setModal('quickSpend')}><Icon name="plus"/> Add</button></div>
-            <div className="spending-total">{money(paycheckStats.spent)}</div>
-
-            <div className="spending-categories">
-              {Object.entries(data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'spent').reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + Number(t.amount); return acc }, {})).slice(0,4).map(([category, amount]) => <div key={category}><span>{category}</span><strong>{money(amount)}</strong></div>)}
-              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'spent').length === 0 && <span className="muted">No spending recorded yet.</span>}
-            </div>
-          </div>
-
-          <div className="card span-2 planned-card">
-            <div className="section-head"><div><h2>Planned purchases</h2></div><button className="text-btn" onClick={() => setModal('plannedPurchase')}><Icon name="plus"/> Add</button></div>
-            <div className="item-list">
-              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').map(t => <div className="list-row" key={t.id}><div className="planned-dot"/><div className="row-main"><strong>{t.name}</strong><span>{shortDate(t.date)} · {t.category}</span></div><strong>{money(t.amount)}</strong></div>)}
-              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').length === 0 && <div className="empty-state">No planned purchases assigned to this paycheck.</div>}
-            </div>
-          </div>
-
-          <div className="card afford-card">
-            <h2>Purchase check</h2>
-            <label>Purchase amount<div className="money-input"><span>$</span><input inputMode="decimal" placeholder="0.00" value={purchaseAmount} onChange={e => setPurchaseAmount(e.target.value.replace(/[^0-9.]/g, ''))}/></div></label>
-            <div className={`afford-result ${afterPurchase >= data.settings.safetyBuffer ? 'good' : 'warn'}`}>
-              <span>Remaining</span><strong>{money(afterPurchase)}</strong><small>{afterPurchase >= data.settings.safetyBuffer ? `Above ${money(data.settings.safetyBuffer)} buffer` : `Below ${money(data.settings.safetyBuffer)} buffer`}</small>
-            </div>
-          </div>
-
-          <div className="card span-2">
-            <div className="section-head"><div><h2>Paycheck timeline</h2></div><button className="text-btn" onClick={() => setView('paychecks')}>Income</button></div>
-            <div className="timeline">
-              {sortedPaychecks.slice(0, 4).map((p, i) => {
-                const occurrences = occurrencesForPaycheck(p)
-                const bills = occurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((sum, o) => sum + Number(o.bill.amount), 0)
-                const planned = data.transactions.filter(t => t.paycheckId === p.id && t.type === 'planned').reduce((sum, t) => sum + Number(t.amount), 0)
-                const spent = data.transactions.filter(t => t.paycheckId === p.id && t.type === 'spent').reduce((sum, t) => sum + Number(t.amount), 0)
-                const remain = projectedNetForPaycheck(p) - bills - planned - spent
-                return <button key={p.id} onClick={() => setSelectedPaycheckId(p.id)} className={`timeline-item ${p.id === selectedPaycheckId ? 'selected' : ''}`}>
-                  <div className="timeline-dot">{i + 1}</div><span>{shortDate(p.date)}</span><strong>{money(remain)}</strong><small>projected left</small>
-                </button>
-              })}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="section-head"><div><h2>Goals</h2></div><button className="text-btn" onClick={() => setView('goals')}>View all</button></div>
-            <div className="goal-stack">{data.goals.slice(0, 3).map(g => <div className="goal-mini" key={g.id}><div><strong>{g.name}</strong><span>{money(g.saved)} / {money(g.target)}</span></div><Progress value={(g.saved / g.target) * 100}/></div>)}</div>
-          </div>
-        </section>
-      </>}
-
-      {view === 'paychecks' && <section className="income-layout">
-        <div className="income-summary-grid">
-          <div className="metric-card"><span>Selected deposit</span><strong>{money(projectedNetForPaycheck(selected))}</strong><small>{selected?.actualNet != null ? 'Actual deposit received' : `Projected for ${selected ? longDate(selected.date) : ''}`}</small></div>
-          <div className="metric-card"><span>Gross estimate</span><strong>{money(gross)}</strong><small>{Number(selected?.regularHours || 0) + Number(selected?.overtimeHours || 0)} total hours · {Number(selected?.overtimeHours || 0)} OT</small></div>
-          <div className="metric-card"><span>Net rate</span><strong>{effectiveNetPercent.toFixed(1)}%</strong><small>{learnedNetPercent != null ? `${actualPaychecks.length} actual paycheck${actualPaychecks.length === 1 ? '' : 's'}` : 'Default estimate'}</small></div>
-          <div className="metric-card"><span>Pay schedule</span><strong>{data.settings.payFrequency}</strong></div>
-        </div>
-
-        <div className="page-grid income-main-grid">
-          <div className="card full-card">
-            <div className="section-head"><div><h2>Paychecks</h2></div><button className="primary small" onClick={() => setModal('paycheck')}><Icon name="plus"/> Add paycheck</button></div>
-            <div className="income-list">
-              {sortedPaychecks.map(p => {
-                const isSelected = p.id === selectedPaycheckId
-                const pGross = grossForPaycheck(p)
-                return <button key={p.id} className={`income-row ${isSelected ? 'selected' : ''}`} onClick={() => setSelectedPaycheckId(p.id)}>
-                  <div className="income-date"><span>{new Intl.DateTimeFormat('en-US', { month: 'short' }).format(toDate(p.date)).toUpperCase()}</span><strong>{toDate(p.date).getDate()}</strong></div>
-                  <div className="income-primary"><strong>{p.label}</strong><span>{Number(p.regularHours || 0)} regular hrs · {Number(p.overtimeHours || 0)} OT hrs</span></div>
-                  <div className="income-stat"><span>Gross</span><strong>{money(pGross)}</strong></div>
-                  <div className="income-stat"><span>{p.actualNet != null ? 'Take-home' : 'Projected'}</span><strong>{money(projectedNetForPaycheck(p))}</strong></div>
-                  <div className={`income-status ${p.actualNet != null ? 'received' : 'expected'}`}>{p.actualNet != null ? 'Received' : 'Expected'}</div>
-                </button>
-              })}
-            </div>
-          </div>
-
-          <div className="card income-editor">
-            <h2>{selected?.label}</h2>
-            <div className="form-grid one polished-form">
-              <label><span>Estimated net</span><div className="field-prefix readonly-field"><span>$</span><input readOnly value={projectedNetForPaycheck(selected).toFixed(2)}/></div></label>
-              <label><span>Actual deposit <em>optional</em></span><div className="field-prefix"><span>$</span><input type="number" step="0.01" placeholder="Enter when your paycheck arrives" value={selected?.actualNet ?? ''} onChange={e => update('paychecks', selected.id, { actualNet: e.target.value === '' ? null : Number(e.target.value) })}/></div></label>
-              <div className="hours-grid">
-                <label><span>Regular hours</span><input type="number" step="0.1" value={selected?.regularHours ?? 0} onChange={e => update('paychecks', selected.id, { regularHours: Number(e.target.value) })}/></label>
-                <label><span>Overtime hours</span><input type="number" step="0.1" value={selected?.overtimeHours ?? 0} onChange={e => update('paychecks', selected.id, { overtimeHours: Number(e.target.value) })}/></label>
-              </div>
-            </div>
-            <div className="income-calculation">
-              <div><span>Hourly rate</span><strong>{money(data.settings.hourlyRate)}</strong></div>
-              <div><span>Calculated gross</span><strong>{money(gross)}</strong></div>
-              <div className="highlight"><span>{selected?.actualNet != null ? 'Actual take-home' : 'Projected take-home'}</span><strong>{money(projectedNetForPaycheck(selected))}</strong></div>
-            </div>
-          </div>
-        </div>
-      </section>}
-
-      {view === 'bills' && <section className="bills-page">
-        <div className="bill-summary-grid">
-          <div className="metric-card"><span>Active bills</span><strong>{data.bills.length}</strong><small>Recurring and one-time</small></div>
-          <div className="metric-card"><span>Due this paycheck</span><strong>{money(selectedOccurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((s, o) => s + Number(o.bill.amount), 0))}</strong><small>{selected?.label}</small></div>
-          <div className="metric-card"><span>Next due</span><strong>{upcomingOccurrences[0] ? money(upcomingOccurrences[0].bill.amount) : '—'}</strong><small>{upcomingOccurrences[0] ? `${upcomingOccurrences[0].bill.name} · ${shortDate(upcomingOccurrences[0].dueDate)}` : 'No upcoming bills'}</small></div>
-        </div>
-
-        <div className="page-grid bills-main-grid">
-          <div className="card full-card">
-            <div className="section-head"><div><h2>Bills</h2></div><button className="primary small" onClick={() => { setEditingBill(null); setModal('bill') }}><Icon name="plus"/> Add bill</button></div>
-            <div className="bill-cards">
-              {data.bills.map(b => {
-                const next = nextDueFor(b)
-                return <div className="bill-card" key={b.id}>
-                  <div className="bill-icon"><Icon name={b.scheduleType === 'once' ? 'calendar' : 'repeat'}/></div>
-                  <div className="bill-card-main"><strong>{b.name}</strong><span>{b.category}</span><small>{scheduleLabel(b)}</small></div>
-                  <div className="bill-next"><span>Next due</span><strong>{next ? shortDate(next) : 'Complete'}</strong></div>
-                  <div className="bill-amount">{money(b.amount)}</div>
-                  <div className="bill-actions"><button title="Edit" onClick={() => { setEditingBill(b); setModal('bill') }}><Icon name="edit"/></button><button title="Delete" onClick={() => remove('bills', b.id)}>×</button></div>
-                </div>
-              })}
-            </div>
-          </div>
-
-          <div className="card schedule-card">
-            <h2>Payment calendar</h2>
-            <div className="schedule-list">
-              {upcomingOccurrences.slice(0, 8).map(({ bill, dueDate }) => {
-                const paid = bill.paidDates.includes(dueDate)
-                return <div className="schedule-row" key={`${bill.id}-${dueDate}`}>
-                  <div className="schedule-date"><span>{new Intl.DateTimeFormat('en-US', { month: 'short' }).format(toDate(dueDate))}</span><strong>{toDate(dueDate).getDate()}</strong></div>
-                  <div><strong>{bill.name}</strong><span>{scheduleLabel(bill)}</span></div>
-                  <div className="schedule-money"><strong>{money(bill.amount)}</strong><button className={`mini-check ${paid ? 'done' : ''}`} onClick={() => toggleOccurrencePaid(bill.id, dueDate)}>{paid ? 'Paid' : 'Mark paid'}</button></div>
-                </div>
-              })}
-              {upcomingOccurrences.length === 0 && <div className="empty-state">No upcoming bills scheduled.</div>}
-            </div>
-          </div>
-        </div>
-      </section>}
-
-      {view === 'transactions' && <section className="spending-page">
-        <div className="spending-action-grid"><button className="card spending-action" onClick={() => setModal('quickSpend')}><strong>Add spending</strong><small>Amount and category</small></button><button className="card spending-action" onClick={() => setModal('plannedPurchase')}><strong>Plan a purchase</strong><small>Reserve from a paycheck</small></button></div>
-        <div className="card full-card">
-          <div className="section-head"><div><h2>Activity</h2></div></div>
-          <div className="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Paycheck</th><th>Type</th><th>Amount</th><th></th></tr></thead><tbody>{data.transactions.map(t => <tr key={t.id}><td>{shortDate(t.date)}</td><td><strong>{t.name || t.category}</strong></td><td>{t.category}</td><td>{data.paychecks.find(p => p.id === t.paycheckId)?.label || '—'}</td><td><span className={`pill ${t.type}`}>{t.type === 'spent' ? 'Spent' : 'Planned'}</span></td><td><strong>{money(t.amount)}</strong></td><td><button className="delete" onClick={() => remove('transactions', t.id)}>Delete</button></td></tr>)}</tbody></table></div>
-        </div>
-      </section>}
-
-      {view === 'goals' && <section className="goals-grid">{data.goals.map(g => <div className="card goal-card" key={g.id}><div className="goal-icon"><Icon name="goals"/></div><h2>{g.name}</h2><div className="goal-money">{money(g.saved)} <span>of {money(g.target)}</span></div><Progress value={(g.saved / g.target) * 100}/><div className="goal-controls"><label>Saved<input type="number" step="0.01" value={g.saved} onChange={e => update('goals', g.id, { saved: Number(e.target.value) })}/></label><label>Target<input type="number" step="0.01" value={g.target} onChange={e => update('goals', g.id, { target: Number(e.target.value) })}/></label></div><p>Target: {longDate(g.targetDate)}</p><button className="delete" onClick={() => remove('goals', g.id)}>Delete goal</button></div>)}<button className="add-card" onClick={() => setModal('goal')}><Icon name="plus"/><strong>Add goal</strong></button></section>}
-
-      {view === 'settings' && <section className="settings-grid">
-        <div className="card"><h2>Appearance</h2><div className="form-grid one"><label>Theme<select value={data.settings.themeMode || 'dark'} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, themeMode: e.target.value } }))}><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Accent color<div className="accent-picker">{['mint','blue','purple','orange'].map(a => <button type="button" key={a} aria-label={a} className={`accent-swatch ${a} ${(data.settings.accentTheme || 'mint') === a ? 'selected' : ''}`} onClick={() => setData(d => ({ ...d, settings: { ...d.settings, accentTheme: a } }))}/>)}</div></label></div></div>
-        <div className="card"><h2>Income</h2><div className="form-grid one"><label>Hourly rate<input type="number" step="0.01" value={data.settings.hourlyRate} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, hourlyRate: Number(e.target.value) } }))}/></label><label>Overtime multiplier<input type="number" step="0.1" value={data.settings.overtimeMultiplier} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, overtimeMultiplier: Number(e.target.value) } }))}/></label><label>Default net %<input type="number" step="0.1" value={data.settings.estimatedNetPercent} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, estimatedNetPercent: Number(e.target.value) } }))}/></label><label className="toggle-row"><span><strong>Auto-adjust net rate</strong></span><input type="checkbox" checked={data.settings.autoLearnNet !== false} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, autoLearnNet: e.target.checked } }))}/></label><label>Safety buffer<input type="number" step="1" value={data.settings.safetyBuffer} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, safetyBuffer: Number(e.target.value) } }))}/></label></div></div>
-        <div className="card"><h2>Data</h2><div className="stack-buttons"><button className="secondary" onClick={exportData}><Icon name="download"/> Download backup</button><button className="danger" onClick={resetData}><Icon name="reset"/> Reset budget</button></div></div>
-      </section>}
+      {view === 'goals' && <GoalsPage data={data} setData={setData} />}
+      {view === 'settings' && <SettingsPage data={data} updateSettings={updateSettings} learnedNetPercent={learnedNetPercent} />}
     </main>
 
-    <div className="mobile-nav">{navItems.slice(0, 5).map(([id, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span></button>)}</div>
+    {modal === 'income' && <IncomeModal
+      item={editingIncome}
+      settings={data.settings}
+      onClose={() => { setModal(null); setEditingIncome(null) }}
+      onSave={(item) => {
+        setData((current) => ({
+          ...current,
+          income: editingIncome ? current.income.map((entry) => entry.id === item.id ? item : entry) : [...current.income, item],
+        }))
+        setModal(null)
+        setEditingIncome(null)
+      }}
+    />}
 
-    {modal === 'bill' && <BillModal bill={editingBill} onClose={() => { setEditingBill(null); setModal(null) }} onSave={saveBill}/>} 
-    {modal === 'quickSpend' && <QuickSpendModal paychecks={sortedPaychecks} defaultPaycheckId={selectedPaycheckId} onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, transactions: [...d.transactions, item] })); setModal(null) }}/>} 
-    {modal === 'plannedPurchase' && <PlannedPurchaseModal paychecks={sortedPaychecks} defaultPaycheckId={selectedPaycheckId} onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, transactions: [...d.transactions, item] })); setModal(null) }}/>} 
-    {modal === 'paycheck' && <PaycheckModal onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, paychecks: [...d.paychecks, item].sort((a, b) => a.date.localeCompare(b.date)) })); setSelectedPaycheckId(item.id); setModal(null) }}/>} 
-    {modal === 'goal' && <GoalModal onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, goals: [...d.goals, item] })); setModal(null) }}/>} 
+    {modal === 'bill' && <BillModal
+      bill={editingBill}
+      onClose={() => { setModal(null); setEditingBill(null) }}
+      onSave={(bill) => {
+        setData((current) => ({
+          ...current,
+          bills: editingBill ? current.bills.map((entry) => entry.id === bill.id ? bill : entry) : [...current.bills, bill],
+        }))
+        setModal(null)
+        setEditingBill(null)
+      }}
+    />}
+
+    {modal === 'spending' && <TransactionModal
+      mode="spent"
+      onClose={() => setModal(null)}
+      onSave={(transaction) => {
+        setData((current) => ({ ...current, transactions: [...current.transactions, transaction] }))
+        setModal(null)
+      }}
+    />}
+
+    {modal === 'planned' && <TransactionModal
+      mode="planned"
+      onClose={() => setModal(null)}
+      onSave={(transaction) => {
+        setData((current) => ({ ...current, transactions: [...current.transactions, transaction] }))
+        setModal(null)
+      }}
+    />}
+
+    {modal === 'actual' && actualTarget && <ActualPayModal
+      occurrence={actualTarget}
+      onClose={() => { setModal(null); setActualTarget(null) }}
+      onSave={(actual) => {
+        setData((current) => ({
+          ...current,
+          income: current.income.map((item) => item.id === actualTarget.item.id
+            ? { ...item, actuals: { ...(item.actuals || {}), [actualTarget.date]: actual } }
+            : item),
+        }))
+        setModal(null)
+        setActualTarget(null)
+      }}
+    />}
   </div>
 }
 
-function BillModal({ bill, onClose, onSave }) {
-  const existing = bill || {}
-  const [f, setF] = useState({
-    name: existing.name || '',
-    amount: existing.amount ?? '',
-    category: existing.category || 'Utilities',
-    scheduleType: existing.scheduleType || 'monthly',
-    dueDate: existing.dueDate || todayIso(),
-    anchorDate: existing.anchorDate || existing.dueDate || todayIso(),
-    dayOfMonth: existing.dayOfMonth || 15,
-  })
+function SetupScreen({ data, setData }) {
+  const [kind, setKind] = useState('paycheck')
+  const [recurrence, setRecurrence] = useState('biweekly')
+  const [firstDate, setFirstDate] = useState(todayIso())
+  const [payMode, setPayMode] = useState('hourly')
+  const [hourlyRate, setHourlyRate] = useState(data.settings.hourlyRate || 22.28)
+  const [regularHours, setRegularHours] = useState(80)
+  const [amount, setAmount] = useState('')
 
-  const submit = (e) => {
-    e.preventDefault()
-    const base = { id: bill?.id || uid('bill'), name: f.name, amount: Number(f.amount), category: f.category, scheduleType: f.scheduleType, paidDates: bill?.paidDates || [] }
-    if (f.scheduleType === 'once') onSave({ ...base, dueDate: f.dueDate })
-    else if (f.scheduleType === 'monthly') onSave({ ...base, anchorDate: f.anchorDate, dayOfMonth: Number(f.dayOfMonth) })
-    else onSave({ ...base, anchorDate: f.anchorDate })
+  const finish = (skip = false) => {
+    const income = skip ? [] : [{
+      id: uid('income'),
+      name: kind === 'paycheck' ? 'Paycheck' : 'Income',
+      kind,
+      recurrence,
+      firstDate,
+      payMode,
+      hourlyRate: Number(hourlyRate || 0),
+      regularHours: Number(regularHours || 0),
+      overtimeHours: 0,
+      overtimeMultiplier: 1.5,
+      amount: Number(amount || 0),
+      expectedNet: payMode === 'fixed' ? Number(amount || 0) : 0,
+      actuals: {},
+    }]
+    setData((current) => ({ ...current, setupComplete: true, income: [...current.income, ...income] }))
   }
 
-  return <Modal title={bill ? 'Edit bill' : 'Add bill'} onClose={onClose}>
-    <form onSubmit={submit}>
-      <div className="form-grid">
-        <label>Bill name<input required autoFocus value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label>
-        <label>Amount<input required type="number" step="0.01" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></label>
-        <label>Category<select value={f.category} onChange={e => setF({ ...f, category: e.target.value })}><option>Housing</option><option>Utilities</option><option>Insurance</option><option>Debt</option><option>Subscription</option><option>Transportation</option><option>Other</option></select></label>
-        <label>Repeats<select value={f.scheduleType} onChange={e => setF({ ...f, scheduleType: e.target.value })}><option value="once">One time</option><option value="weekly">Every week</option><option value="biweekly">Every other week</option><option value="monthly">Every month</option><option value="yearly">Every year</option></select></label>
-
-        {f.scheduleType === 'once' && <label className="wide">Due date<input required type="date" value={f.dueDate} onChange={e => setF({ ...f, dueDate: e.target.value })}/></label>}
-        {f.scheduleType === 'monthly' && <><label>Day of month<input required type="number" min="1" max="31" value={f.dayOfMonth} onChange={e => setF({ ...f, dayOfMonth: e.target.value })}/></label><label>Start schedule on<input required type="date" value={f.anchorDate} onChange={e => setF({ ...f, anchorDate: e.target.value })}/></label></>}
-        {(f.scheduleType === 'weekly' || f.scheduleType === 'biweekly' || f.scheduleType === 'yearly') && <label className="wide">First payment date<input required type="date" value={f.anchorDate} onChange={e => setF({ ...f, anchorDate: e.target.value })}/><small className="field-help">{f.scheduleType === 'biweekly' ? 'Choose one Friday, and it will repeat every other Friday.' : 'Future payments will repeat from this date.'}</small></label>}
+  return <main className="setup-page">
+    <section className="setup-panel">
+      <div className="brand-lockup"><div className="brand-mark large">P</div><strong>Paycheck Budget</strong></div>
+      <div className="setup-heading"><h1>Add your primary income</h1><p>You can add bills and other income after setup.</p></div>
+      <div className="form-stack">
+        <Field label="Income type"><Segmented value={kind} onChange={setKind} options={[[ 'paycheck', 'Paycheck' ], [ 'other', 'Other' ]]} /></Field>
+        <Field label="Schedule"><Segmented value={recurrence} onChange={setRecurrence} options={[[ 'once', 'One-time' ], [ 'weekly', 'Weekly' ], [ 'biweekly', 'Every 2 weeks' ], [ 'monthly', 'Monthly' ]]} /></Field>
+        <Field label={recurrence === 'once' ? 'Date' : 'First payment'}><input type="date" value={firstDate} onChange={(event) => setFirstDate(event.target.value)} /></Field>
+        {kind === 'paycheck' && <Field label="Pay type"><Segmented value={payMode} onChange={setPayMode} options={[[ 'hourly', 'Hourly' ], [ 'fixed', 'Fixed net' ]]} /></Field>}
+        {kind === 'paycheck' && payMode === 'hourly' ? <div className="form-grid two"><Field label="Hourly rate"><input type="number" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} /></Field><Field label="Typical hours"><input type="number" step="0.1" value={regularHours} onChange={(event) => setRegularHours(event.target.value)} /></Field></div> : <Field label="Amount"><input type="number" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>}
       </div>
-      <div className="schedule-preview"><Icon name="repeat"/><div><span>Schedule preview</span><strong>{scheduleLabel({ ...f, dayOfMonth: Number(f.dayOfMonth) })}</strong></div></div>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">{bill ? 'Save changes' : 'Add bill'}</button></div>
+      <div className="setup-actions"><button className="secondary-button" onClick={() => finish(true)}>Skip</button><button className="primary-button" onClick={() => finish(false)}>Continue</button></div>
+    </section>
+  </main>
+}
+
+function Dashboard({ nextIncome, cycleEnd, safeToSpend, billsTotal, plannedTotal, spentTotal, rows, markBillPaid, onAddIncome, onAddBill, onAddSpending }) {
+  return <div className="page">
+    <header className="page-head compact">
+      <div><h1>Dashboard</h1>{nextIncome && <p>{shortDate(nextIncome.date)} – {shortDate(cycleEnd)}</p>}</div>
+      <div className="quick-actions"><button onClick={onAddIncome}>+ Income</button><button onClick={onAddBill}>+ Bill</button><button onClick={onAddSpending}>+ Spending</button></div>
+    </header>
+
+    <section className="balance-strip">
+      <div className="balance-primary"><span>Safe to spend</span><strong className={safeToSpend < 0 ? 'negative' : ''}>{money(safeToSpend)}</strong></div>
+      <div className="balance-stat"><span>Next income</span><strong>{money(nextIncome?.amount || 0)}</strong><small>{nextIncome ? shortDate(nextIncome.date) : 'Not scheduled'}</small></div>
+      <div className="balance-stat"><span>Bills</span><strong>{money(billsTotal)}</strong></div>
+      <div className="balance-stat"><span>Planned</span><strong>{money(plannedTotal)}</strong></div>
+      <div className="balance-stat"><span>Spent</span><strong>{money(spentTotal)}</strong></div>
+    </section>
+
+    <section className="section-block">
+      <div className="section-head"><h2>Upcoming</h2><span>{rows.length} items</span></div>
+      {rows.length ? <div className="finance-list">
+        {rows.map((row) => <div className={`finance-row ${row.paid ? 'muted-row' : ''}`} key={row.key}>
+          <div className="row-date"><strong>{shortDate(row.date)}</strong></div>
+          <div className="row-main"><strong>{row.name}</strong><span>{row.category}</span></div>
+          <div className="row-amount">{money(row.amount)}</div>
+          <div className="row-action">{row.type === 'bill' && <button className="small-button" onClick={() => markBillPaid(row.occurrence)}>{row.paid ? 'Paid' : 'Mark paid'}</button>}</div>
+        </div>)}
+      </div> : <EmptyState title="Nothing scheduled for this pay period." />}
+    </section>
+  </div>
+}
+
+function IncomePage({ tab, setTab, income, occurrences, effectiveNetPercent, learnedNetPercent, onAdd, onEdit, onDelete, onRecord }) {
+  const now = todayIso()
+  const future = occurrences.filter((occurrence) => occurrence.date >= now).slice(0, 8)
+  const history = occurrences.filter((occurrence) => occurrence.date < now || occurrence.actual).slice(-20).reverse()
+  const shownItems = tab === 'recurring' ? income.filter((item) => item.recurrence !== 'once') : income.filter((item) => item.recurrence === 'once')
+
+  return <div className="page">
+    <header className="page-head"><div><h1>Income</h1></div><button className="primary-button" onClick={onAdd}><Icon name="plus" />Add income</button></header>
+    <Tabs value={tab} onChange={setTab} items={[[ 'overview', 'Overview' ], [ 'recurring', 'Recurring' ], [ 'one-time', 'One-time' ], [ 'history', 'History' ]]} />
+
+    {tab === 'overview' && <>
+      <section className="summary-line">
+        <div><span>Next deposit</span><strong>{money(future[0]?.amount || 0)}</strong><small>{future[0] ? `${future[0].item.name} · ${shortDate(future[0].date)}` : 'Not scheduled'}</small></div>
+        <div><span>Net rate</span><strong>{effectiveNetPercent.toFixed(1)}%</strong><small>{learnedNetPercent != null ? 'Based on actual pay' : 'Current estimate'}</small></div>
+        <div><span>Sources</span><strong>{income.length}</strong></div>
+      </section>
+      <section className="section-block"><div className="section-head"><h2>Upcoming income</h2></div>{future.length ? <div className="finance-list">{future.map((occurrence) => <IncomeOccurrenceRow key={occurrence.key} occurrence={occurrence} onRecord={onRecord} />)}</div> : <EmptyState title="No income scheduled." action="Add income" onAction={onAdd} />}</section>
+    </>}
+
+    {(tab === 'recurring' || tab === 'one-time') && <section className="section-block flush-top">
+      {shownItems.length ? <div className="finance-list">{shownItems.map((item) => <div className="finance-row" key={item.id}>
+        <div className="row-icon"><Icon name="income" /></div>
+        <div className="row-main"><strong>{item.name}</strong><span>{recurrenceLabel(item.recurrence, item.firstDate)} · {item.kind === 'paycheck' ? 'Paycheck' : 'Other income'}</span></div>
+        <div className="row-amount">{item.kind === 'paycheck' && item.payMode === 'hourly' ? `${money(item.hourlyRate)}/hr` : money(item.amount || item.expectedNet)}</div>
+        <div className="row-action action-pair"><button className="text-button" onClick={() => onEdit(item)}>Edit</button><button className="text-button danger" onClick={() => onDelete(item.id)}>Delete</button></div>
+      </div>)}</div> : <EmptyState title={`No ${tab === 'recurring' ? 'recurring' : 'one-time'} income.`} action="Add income" onAction={onAdd} />}
+    </section>}
+
+    {tab === 'history' && <section className="section-block flush-top">
+      {history.length ? <div className="finance-list">{history.map((occurrence) => <IncomeOccurrenceRow key={occurrence.key} occurrence={occurrence} onRecord={onRecord} />)}</div> : <EmptyState title="No income history yet." />}
+    </section>}
+  </div>
+}
+
+function IncomeOccurrenceRow({ occurrence, onRecord }) {
+  return <div className="finance-row">
+    <div className="row-date"><strong>{shortDate(occurrence.date)}</strong></div>
+    <div className="row-main"><strong>{occurrence.item.name}</strong><span>{occurrence.actual?.actualNet != null ? 'Actual deposit' : 'Estimated'}</span></div>
+    <div className="row-amount">{money(occurrence.amount)}</div>
+    <div className="row-action">{occurrence.item.kind === 'paycheck' && <button className="small-button" onClick={() => onRecord(occurrence)}>{occurrence.actual?.actualNet != null ? 'Edit actual' : 'Record actual'}</button>}</div>
+  </div>
+}
+
+function ExpensesPage({ tab, setTab, bills, billOccurrences, transactions, onAddBill, onEditBill, onDeleteBill, onTogglePaid, onAddSpending, onAddPlanned, onDeleteTransaction }) {
+  const spending = transactions.filter((transaction) => transaction.type === 'spent').sort((a, b) => b.date.localeCompare(a.date))
+  const planned = transactions.filter((transaction) => transaction.type === 'planned').sort((a, b) => a.date.localeCompare(b.date))
+  const upcomingBills = billOccurrences.filter((occurrence) => occurrence.date >= todayIso()).slice(0, 12)
+  const monthlyBillEstimate = bills.reduce((sum, bill) => {
+    const amount = Number(bill.amount || 0)
+    if (bill.scheduleType === 'weekly') return sum + amount * 52 / 12
+    if (bill.scheduleType === 'biweekly') return sum + amount * 26 / 12
+    if (bill.scheduleType === 'monthly') return sum + amount
+    return sum
+  }, 0)
+
+  return <div className="page">
+    <header className="page-head"><div><h1>Expenses</h1></div><div className="page-actions"><button className="secondary-button" onClick={onAddSpending}>+ Spending</button><button className="primary-button" onClick={onAddBill}>+ Bill</button></div></header>
+    <Tabs value={tab} onChange={setTab} items={[[ 'overview', 'Overview' ], [ 'bills', 'Bills' ], [ 'spending', 'Spending' ], [ 'planned', 'Planned' ]]} />
+
+    {tab === 'overview' && <>
+      <section className="summary-line"><div><span>Recurring bills</span><strong>{money(monthlyBillEstimate)}</strong><small>Approx. monthly</small></div><div><span>Recent spending</span><strong>{money(spending.slice(0, 10).reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong><small>Last 10 entries</small></div><div><span>Planned</span><strong>{money(planned.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong></div></section>
+      <section className="section-block"><div className="section-head"><h2>Upcoming bills</h2></div>{upcomingBills.length ? <div className="finance-list">{upcomingBills.map((occurrence) => <BillOccurrenceRow key={occurrence.key} occurrence={occurrence} onTogglePaid={onTogglePaid} />)}</div> : <EmptyState title="No upcoming bills." action="Add bill" onAction={onAddBill} />}</section>
+    </>}
+
+    {tab === 'bills' && <section className="section-block flush-top">
+      {bills.length ? <div className="finance-list">{bills.map((bill) => <div className="finance-row" key={bill.id}>
+        <div className="row-icon"><Icon name="expenses" /></div>
+        <div className="row-main"><strong>{bill.name}</strong><span>{recurrenceLabel(bill.scheduleType, bill.anchorDate || bill.dueDate)} · {bill.category || 'Other'}</span></div>
+        <div className="row-amount">{money(bill.amount)}</div>
+        <div className="row-action action-pair"><button className="text-button" onClick={() => onEditBill(bill)}>Edit</button><button className="text-button danger" onClick={() => onDeleteBill(bill.id)}>Delete</button></div>
+      </div>)}</div> : <EmptyState title="No bills added." action="Add bill" onAction={onAddBill} />}
+    </section>}
+
+    {tab === 'spending' && <section className="section-block flush-top">
+      <div className="section-head"><h2>Spending</h2><button className="small-button" onClick={onAddSpending}>Add spending</button></div>
+      {spending.length ? <div className="finance-list">{spending.map((item) => <TransactionRow key={item.id} item={item} onDelete={onDeleteTransaction} />)}</div> : <EmptyState title="No spending recorded." action="Add spending" onAction={onAddSpending} />}
+    </section>}
+
+    {tab === 'planned' && <section className="section-block flush-top">
+      <div className="section-head"><h2>Planned purchases</h2><button className="small-button" onClick={onAddPlanned}>Add planned</button></div>
+      {planned.length ? <div className="finance-list">{planned.map((item) => <TransactionRow key={item.id} item={item} onDelete={onDeleteTransaction} />)}</div> : <EmptyState title="No planned purchases." action="Add planned" onAction={onAddPlanned} />}
+    </section>}
+  </div>
+}
+
+function BillOccurrenceRow({ occurrence, onTogglePaid }) {
+  return <div className={`finance-row ${occurrence.paid ? 'muted-row' : ''}`}>
+    <div className="row-date"><strong>{shortDate(occurrence.date)}</strong></div>
+    <div className="row-main"><strong>{occurrence.bill.name}</strong><span>{occurrence.bill.category || 'Bill'}</span></div>
+    <div className="row-amount">{money(occurrence.bill.amount)}</div>
+    <div className="row-action"><button className="small-button" onClick={() => onTogglePaid(occurrence)}>{occurrence.paid ? 'Paid' : 'Mark paid'}</button></div>
+  </div>
+}
+
+function TransactionRow({ item, onDelete }) {
+  return <div className="finance-row">
+    <div className="row-date"><strong>{shortDate(item.date)}</strong></div>
+    <div className="row-main"><strong>{item.name || item.category}</strong><span>{item.category || (item.type === 'planned' ? 'Planned' : 'Spending')}</span></div>
+    <div className="row-amount">{money(item.amount)}</div>
+    <div className="row-action"><button className="text-button danger" onClick={() => onDelete(item.id)}>Delete</button></div>
+  </div>
+}
+
+function IncomeModal({ item, settings, onClose, onSave }) {
+  const [kind, setKind] = useState(item?.kind || 'paycheck')
+  const [recurrence, setRecurrence] = useState(item?.recurrence || 'once')
+  const [firstDate, setFirstDate] = useState(item?.firstDate || todayIso())
+  const [name, setName] = useState(item?.name || 'Paycheck')
+  const [payMode, setPayMode] = useState(item?.payMode || 'hourly')
+  const [hourlyRate, setHourlyRate] = useState(item?.hourlyRate ?? settings.hourlyRate)
+  const [regularHours, setRegularHours] = useState(item?.regularHours ?? 80)
+  const [overtimeHours, setOvertimeHours] = useState(item?.overtimeHours ?? 0)
+  const [amount, setAmount] = useState(item?.amount ?? item?.expectedNet ?? '')
+
+  useEffect(() => {
+    if (!item) setName(kind === 'paycheck' ? 'Paycheck' : 'Income')
+  }, [kind, item])
+
+  const submit = (event) => {
+    event.preventDefault()
+    onSave({
+      ...(item || {}),
+      id: item?.id || uid('income'),
+      name: name.trim() || (kind === 'paycheck' ? 'Paycheck' : 'Income'),
+      kind,
+      recurrence,
+      firstDate,
+      payMode,
+      hourlyRate: Number(hourlyRate || 0),
+      regularHours: Number(regularHours || 0),
+      overtimeHours: Number(overtimeHours || 0),
+      overtimeMultiplier: Number(item?.overtimeMultiplier || settings.overtimeMultiplier || 1.5),
+      amount: Number(amount || 0),
+      expectedNet: payMode === 'fixed' ? Number(amount || 0) : Number(item?.expectedNet || 0),
+      actuals: item?.actuals || {},
+    })
+  }
+
+  return <Modal title={item ? 'Edit income' : 'Add income'} onClose={onClose} wide>
+    <form className="modal-form" onSubmit={submit}>
+      <Field label="Income type"><Segmented value={kind} onChange={setKind} options={[[ 'paycheck', 'Paycheck' ], [ 'other', 'Other income' ]]} /></Field>
+      <Field label="Schedule"><Segmented value={recurrence} onChange={setRecurrence} options={[[ 'once', 'One-time' ], [ 'weekly', 'Weekly' ], [ 'biweekly', 'Every 2 weeks' ], [ 'monthly', 'Monthly' ]]} /></Field>
+      <div className="form-grid two"><Field label={recurrence === 'once' ? 'Date' : 'First payment'}><input type="date" value={firstDate} onChange={(event) => setFirstDate(event.target.value)} required /></Field><Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required /></Field></div>
+      {kind === 'paycheck' && <Field label="Pay type"><Segmented value={payMode} onChange={setPayMode} options={[[ 'hourly', 'Hourly' ], [ 'fixed', 'Fixed net' ]]} /></Field>}
+      {kind === 'paycheck' && payMode === 'hourly' ? <div className="form-grid three"><Field label="Hourly rate"><input type="number" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} required /></Field><Field label="Regular hours"><input type="number" step="0.1" value={regularHours} onChange={(event) => setRegularHours(event.target.value)} /></Field><Field label="Typical OT"><input type="number" step="0.1" value={overtimeHours} onChange={(event) => setOvertimeHours(event.target.value)} /></Field></div> : <Field label="Amount"><input type="number" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field>}
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button">Save</button></div>
     </form>
   </Modal>
 }
 
-function QuickSpendModal({ paychecks, defaultPaycheckId, onClose, onSave }) {
-  const [f, setF] = useState({ name: '', amount: '', date: todayIso(), category: 'Food', paycheckId: defaultPaycheckId })
-  const categories = ['Food','Gas','Shopping','Entertainment','PC','Travel','Other']
-  return <Modal title="Quick add spending" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('txn'), name: f.name.trim() || f.category, amount: Number(f.amount), type: 'spent' }) }}><div className="quick-spend-amount"><span>$</span><input required autoFocus inputMode="decimal" type="number" step="0.01" placeholder="0.00" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></div><div className="category-chips">{categories.map(c => <button type="button" className={f.category === c ? 'active' : ''} key={c} onClick={() => setF({ ...f, category: c })}>{c}</button>)}</div><div className="form-grid"><label>Description <small className="field-help">optional</small><input placeholder="Coffee, groceries, gas…" value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label className="wide">Pay from<select value={f.paycheckId} onChange={e => setF({ ...f, paycheckId: e.target.value })}>{paychecks.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add spending</button></div></form></Modal>
+function BillModal({ bill, onClose, onSave }) {
+  const [scheduleType, setScheduleType] = useState(bill?.scheduleType || 'once')
+  const [firstDate, setFirstDate] = useState(bill?.anchorDate || bill?.dueDate || todayIso())
+  const [name, setName] = useState(bill?.name || '')
+  const [amount, setAmount] = useState(bill?.amount || '')
+  const [category, setCategory] = useState(bill?.category || 'Utilities')
+
+  const submit = (event) => {
+    event.preventDefault()
+    onSave({
+      ...(bill || {}),
+      id: bill?.id || uid('bill'),
+      name: name.trim(),
+      amount: Number(amount || 0),
+      category,
+      scheduleType,
+      anchorDate: firstDate,
+      dueDate: scheduleType === 'once' ? firstDate : firstDate,
+      dayOfMonth: scheduleType === 'monthly' ? toDate(firstDate).getDate() : undefined,
+      paidDates: bill?.paidDates || [],
+    })
+  }
+
+  return <Modal title={bill ? 'Edit bill' : 'Add bill'} onClose={onClose} wide>
+    <form className="modal-form" onSubmit={submit}>
+      <Field label="Bill type"><Segmented value={scheduleType === 'once' ? 'once' : 'recurring'} onChange={(value) => setScheduleType(value === 'once' ? 'once' : 'monthly')} options={[[ 'once', 'One-time' ], [ 'recurring', 'Recurring' ]]} /></Field>
+      {scheduleType !== 'once' && <Field label="Frequency"><Segmented value={scheduleType} onChange={setScheduleType} options={[[ 'weekly', 'Weekly' ], [ 'biweekly', 'Every 2 weeks' ], [ 'monthly', 'Monthly' ]]} /></Field>}
+      <div className="form-grid two"><Field label="Bill name"><input value={name} onChange={(event) => setName(event.target.value)} required /></Field><Field label="Amount"><input type="number" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field></div>
+      <div className="form-grid two"><Field label={scheduleType === 'once' ? 'Due date' : 'First due date'}><input type="date" value={firstDate} onChange={(event) => setFirstDate(event.target.value)} required /></Field><Field label="Category"><select value={category} onChange={(event) => setCategory(event.target.value)}>{BILL_CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></Field></div>
+      {scheduleType !== 'once' && <div className="schedule-preview"><Icon name="calendar" /><span>Starts {shortDate(firstDate)} · {recurrenceLabel(scheduleType, firstDate)}</span></div>}
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button">Save</button></div>
+    </form>
+  </Modal>
 }
 
-function PlannedPurchaseModal({ paychecks, defaultPaycheckId, onClose, onSave }) {
-  const [f, setF] = useState({ name: '', amount: '', date: todayIso(), category: 'Planned purchase', paycheckId: defaultPaycheckId })
-  return <Modal title="Plan a purchase" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('txn'), amount: Number(f.amount), type: 'planned' }) }}><div className="form-grid"><label>Purchase<input required autoFocus placeholder="PC part, trip, chair…" value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Amount<input required type="number" step="0.01" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></label><label>Planned date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Category<select value={f.category} onChange={e => setF({ ...f, category: e.target.value })}><option>Planned purchase</option><option>PC</option><option>Travel</option><option>Shopping</option><option>Other</option></select></label><label className="wide">Pay from<select value={f.paycheckId} onChange={e => setF({ ...f, paycheckId: e.target.value })}>{paychecks.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Reserve money</button></div></form></Modal>
+function TransactionModal({ mode, onClose, onSave }) {
+  const [amount, setAmount] = useState('')
+  const [category, setCategory] = useState(mode === 'spent' ? 'Food' : 'Planned')
+  const [name, setName] = useState('')
+  const [date, setDate] = useState(todayIso())
+  const submit = (event) => {
+    event.preventDefault()
+    onSave({ id: uid('txn'), type: mode, amount: Number(amount || 0), category, name: name.trim() || category, date })
+  }
+  return <Modal title={mode === 'spent' ? 'Add spending' : 'Add planned purchase'} onClose={onClose}>
+    <form className="modal-form" onSubmit={submit}>
+      <Field label="Amount"><input className="amount-input" type="number" step="0.01" autoFocus value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field>
+      {mode === 'spent' ? <Field label="Category"><div className="chip-grid">{SPENDING_CATEGORIES.map((item) => <button type="button" key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div></Field> : <Field label="Category"><input value={category} onChange={(event) => setCategory(event.target.value)} /></Field>}
+      <Field label="Description"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" /></Field>
+      <Field label="Date"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></Field>
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button">Add</button></div>
+    </form>
+  </Modal>
 }
 
-function PaycheckModal({ onClose, onSave }) {
-  const [f, setF] = useState({ date: addDays(todayIso(), 14), label: 'Paycheck', expectedNet: 0, actualNet: null, regularHours: 80, overtimeHours: 0, status: 'upcoming' })
-  return <Modal title="Add paycheck" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('pc'), expectedNet: Number(f.expectedNet), regularHours: Number(f.regularHours), overtimeHours: Number(f.overtimeHours) }) }}><div className="form-grid"><label>Date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Label<input value={f.label} onChange={e => setF({ ...f, label: e.target.value })}/></label><label>Regular hours<input type="number" step="0.1" value={f.regularHours} onChange={e => setF({ ...f, regularHours: e.target.value })}/></label><label>Overtime hours<input type="number" step="0.1" value={f.overtimeHours} onChange={e => setF({ ...f, overtimeHours: e.target.value })}/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add paycheck</button></div></form></Modal>
+function ActualPayModal({ occurrence, onClose, onSave }) {
+  const existing = occurrence.actual || {}
+  const [actualNet, setActualNet] = useState(existing.actualNet ?? '')
+  const [regularHours, setRegularHours] = useState(existing.regularHours ?? occurrence.item.regularHours ?? 0)
+  const [overtimeHours, setOvertimeHours] = useState(existing.overtimeHours ?? occurrence.item.overtimeHours ?? 0)
+  const submit = (event) => {
+    event.preventDefault()
+    onSave({ actualNet: Number(actualNet || 0), regularHours: Number(regularHours || 0), overtimeHours: Number(overtimeHours || 0) })
+  }
+  return <Modal title={`Actual pay · ${shortDate(occurrence.date)}`} onClose={onClose}>
+    <form className="modal-form" onSubmit={submit}>
+      <Field label="Actual net deposit"><input className="amount-input" type="number" step="0.01" value={actualNet} onChange={(event) => setActualNet(event.target.value)} required autoFocus /></Field>
+      {occurrence.item.payMode !== 'fixed' && <div className="form-grid two"><Field label="Regular hours"><input type="number" step="0.1" value={regularHours} onChange={(event) => setRegularHours(event.target.value)} /></Field><Field label="Overtime hours"><input type="number" step="0.1" value={overtimeHours} onChange={(event) => setOvertimeHours(event.target.value)} /></Field></div>}
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button">Save actual</button></div>
+    </form>
+  </Modal>
 }
 
-function GoalModal({ onClose, onSave }) {
-  const [f, setF] = useState({ name: '', target: '', saved: 0, targetDate: addDays(todayIso(), 60) })
-  return <Modal title="Add goal" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('goal'), target: Number(f.target), saved: Number(f.saved) }) }}><div className="form-grid"><label>Goal name<input autoFocus required value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Target amount<input required type="number" step="0.01" value={f.target} onChange={e => setF({ ...f, target: e.target.value })}/></label><label>Already saved<input type="number" step="0.01" value={f.saved} onChange={e => setF({ ...f, saved: e.target.value })}/></label><label>Target date<input type="date" value={f.targetDate} onChange={e => setF({ ...f, targetDate: e.target.value })}/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add goal</button></div></form></Modal>
+function GoalsPage({ data, setData }) {
+  const [name, setName] = useState('')
+  const [target, setTarget] = useState('')
+  const addGoal = (event) => {
+    event.preventDefault()
+    if (!name.trim()) return
+    setData((current) => ({ ...current, goals: [...current.goals, { id: uid('goal'), name: name.trim(), target: Number(target || 0), saved: 0 }] }))
+    setName('')
+    setTarget('')
+  }
+  return <div className="page"><header className="page-head"><div><h1>Goals</h1></div></header><section className="section-block flush-top">{data.goals.length ? <div className="goal-list">{data.goals.map((goal) => {
+    const percent = Number(goal.target) > 0 ? Math.min(100, (Number(goal.saved || 0) / Number(goal.target)) * 100) : 0
+    return <div className="goal-row" key={goal.id}><div className="goal-main"><strong>{goal.name}</strong><span>{money(goal.saved)} of {money(goal.target)}</span><div className="progress"><div style={{ width: `${percent}%` }} /></div></div><input type="number" step="0.01" value={goal.saved} onChange={(event) => setData((current) => ({ ...current, goals: current.goals.map((item) => item.id === goal.id ? { ...item, saved: Number(event.target.value || 0) } : item) }))} /><button className="text-button danger" onClick={() => setData((current) => ({ ...current, goals: current.goals.filter((item) => item.id !== goal.id) }))}>Delete</button></div>
+  })}</div> : <EmptyState title="No goals yet." />}</section><form className="inline-add" onSubmit={addGoal}><input placeholder="Goal name" value={name} onChange={(event) => setName(event.target.value)} /><input type="number" step="0.01" placeholder="Target" value={target} onChange={(event) => setTarget(event.target.value)} /><button className="primary-button">Add goal</button></form></div>
+}
+
+function SettingsPage({ data, updateSettings, learnedNetPercent }) {
+  return <div className="page"><header className="page-head"><div><h1>Settings</h1></div></header>
+    <section className="settings-section"><h2>Appearance</h2><div className="settings-row"><div><strong>Theme</strong></div><Segmented value={data.settings.themeMode} onChange={(themeMode) => updateSettings({ themeMode })} options={[[ 'dark', 'Dark' ], [ 'light', 'Light' ]]} /></div><div className="settings-row"><div><strong>Accent</strong></div><div className="color-options">{['mint', 'blue', 'purple', 'orange'].map((accent) => <button key={accent} className={`${accent} ${data.settings.accentTheme === accent ? 'selected' : ''}`} onClick={() => updateSettings({ accentTheme: accent })} aria-label={accent} />)}</div></div></section>
+    <section className="settings-section"><h2>Income</h2><div className="settings-row"><div><strong>Default hourly rate</strong></div><input type="number" step="0.01" value={data.settings.hourlyRate} onChange={(event) => updateSettings({ hourlyRate: Number(event.target.value || 0) })} /></div><div className="settings-row"><div><strong>Estimated net rate</strong><span>{learnedNetPercent != null ? `Learned rate: ${learnedNetPercent.toFixed(1)}%` : ''}</span></div><input type="number" step="0.1" value={data.settings.estimatedNetPercent} onChange={(event) => updateSettings({ estimatedNetPercent: Number(event.target.value || 0) })} /></div><div className="settings-row"><div><strong>Learn from actual pay</strong></div><button className={`toggle ${data.settings.autoLearnNet ? 'on' : ''}`} onClick={() => updateSettings({ autoLearnNet: !data.settings.autoLearnNet })}><span /></button></div></section>
+    <section className="settings-section"><h2>Account</h2><div className="settings-row"><div><strong>{auth.currentUser?.email}</strong></div><button className="secondary-button" onClick={() => signOut(auth)}>Sign out</button></div></section>
+  </div>
+}
+
+function Field({ label, children }) {
+  return <label className="field"><span>{label}</span>{children}</label>
 }
 
 export default App
