@@ -1,0 +1,58 @@
+export const initialData = {
+  settings: {
+    hourlyRate: 22.28,
+    overtimeMultiplier: 1.5,
+    estimatedNetPercent: 83,
+    autoLearnNet: true,
+    safetyBuffer: 250,
+    currency: 'USD',
+    payFrequency: 'Biweekly',
+  },
+  paychecks: [
+    {
+      id: 'pc-2026-08-21',
+      date: '2026-08-21',
+      label: 'Aug 21 Paycheck',
+      expectedNet: 1500,
+      actualNet: null,
+      regularHours: 80,
+      overtimeHours: 0.7,
+      status: 'upcoming',
+    },
+    {
+      id: 'pc-2026-09-04',
+      date: '2026-09-04',
+      label: 'Sep 4 Paycheck',
+      expectedNet: 1500,
+      actualNet: null,
+      regularHours: 80,
+      overtimeHours: 0,
+      status: 'upcoming',
+    },
+    {
+      id: 'pc-2026-09-18',
+      date: '2026-09-18',
+      label: 'Sep 18 Paycheck',
+      expectedNet: 1500,
+      actualNet: null,
+      regularHours: 80,
+      overtimeHours: 0,
+      status: 'upcoming',
+    },
+  ],
+  bills: [
+    { id: 'bill-rent-1', name: 'Rent', amount: 500, category: 'Housing', scheduleType: 'once', dueDate: '2026-08-21', paidDates: [] },
+    { id: 'bill-internet', name: 'Internet', amount: 60, category: 'Utilities', scheduleType: 'once', dueDate: '2026-08-21', paidDates: [] },
+    { id: 'bill-power', name: 'Power', amount: 122, category: 'Utilities', scheduleType: 'once', dueDate: '2026-08-21', paidDates: [] },
+    { id: 'bill-water', name: 'Water', amount: 96.31, category: 'Utilities', scheduleType: 'once', dueDate: '2026-08-21', paidDates: [] },
+    { id: 'bill-rent-2', name: 'Rent', amount: 500, category: 'Housing', scheduleType: 'once', dueDate: '2026-09-04', paidDates: [] },
+    { id: 'bill-rent-3', name: 'Rent', amount: 1000, category: 'Housing', scheduleType: 'once', dueDate: '2026-09-18', paidDates: [] },
+  ],
+  transactions: [
+    { id: 'txn-chair', name: 'Ergonomic chair', amount: 350, date: '2026-08-21', category: 'Planned purchase', paycheckId: 'pc-2026-08-21', type: 'planned' },
+  ],
+  goals: [
+    { id: 'goal-pc', name: 'PC Parts', target: 650, saved: 0, targetDate: '2026-09-04' },
+    { id: 'goal-lsu', name: 'LSU Game', target: 300, saved: 0, targetDate: '2026-09-04' },
+  ],
+}
