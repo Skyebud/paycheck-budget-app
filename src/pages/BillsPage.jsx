@@ -71,7 +71,7 @@ export default function BillsPage({
           <small>Approx. per month</small>
         </div>
         <div>
-          <span>Bill schedules</span>
+          <span>Bills</span>
           <strong>{bills.length}</strong>
         </div>
       </section>
@@ -121,7 +121,7 @@ export default function BillsPage({
 
       <section className="section-block">
         <div className="section-head">
-          <h2>Bill schedules</h2>
+          <h2>All bills</h2>
         </div>
 
         {bills.length ? (

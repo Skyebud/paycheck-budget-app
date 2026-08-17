@@ -9,9 +9,10 @@ function transactionEffect(transaction) {
 }
 
 export function calculateBudgetView(data) {
+  const now = todayIso()
   const occurrenceRange = {
-    start: addDays(todayIso(), -365),
-    end: addDays(todayIso(), 550),
+    start: addDays(now, -365),
+    end: addDays(now, 550),
   }
 
   let actualNetTotal = 0
@@ -40,7 +41,7 @@ export function calculateBudgetView(data) {
 
         const gross =
           item.payMode === 'fixed'
-            ? Number(item.grossAmount || item.amount || 0)
+            ? 0
             : regular * rate + overtime * rate * multiplier
 
         if (gross > 0) {
@@ -60,19 +61,32 @@ export function calculateBudgetView(data) {
 
   const projectedIncomeAmount = (item, date) => {
     const actual = item.actuals?.[date]
+    const estimateOverride = item.estimateOverrides?.[date]
 
     if (actual?.actualNet != null) return Number(actual.actualNet)
-    if (item.kind !== 'paycheck') return Number(item.amount || 0)
+    if (item.kind !== 'paycheck') {
+      return Number(estimateOverride?.amount ?? item.amount ?? 0)
+    }
 
     if (item.payMode === 'fixed') {
-      return Number(item.expectedNet || item.amount || 0)
+      return Number(
+        estimateOverride?.expectedNet ??
+          estimateOverride?.amount ??
+          item.expectedNet ??
+          item.amount ??
+          0,
+      )
     }
 
     const rate = Number(
       item.hourlyRate || data.settings.hourlyRate || 0,
     )
-    const regular = Number(item.regularHours || 0)
-    const overtime = Number(item.overtimeHours || 0)
+    const regular = Number(
+      estimateOverride?.regularHours ?? item.regularHours ?? 0,
+    )
+    const overtime = Number(
+      estimateOverride?.overtimeHours ?? item.overtimeHours ?? 0,
+    )
     const multiplier = Number(
       item.overtimeMultiplier ||
         data.settings.overtimeMultiplier ||
@@ -128,7 +142,6 @@ export function calculateBudgetView(data) {
     )
     .sort((a, b) => a.date.localeCompare(b.date))
 
-  const now = todayIso()
   const futureIncome = incomeOccurrences.filter(
     (occurrence) => occurrence.date >= now && !occurrence.actual,
   )
@@ -149,6 +162,13 @@ export function calculateBudgetView(data) {
     (occurrence) => !occurrence.paid,
   )
 
+  const billsBeforeNextPay = billOccurrences.filter(
+    (occurrence) =>
+      !occurrence.paid &&
+      occurrence.date >= now &&
+      (!nextIncome || occurrence.date <= nextIncome.date),
+  )
+
   const cycleTransactions = data.transactions.filter(
     (transaction) =>
       transaction.date >= cycleStart && transaction.date <= cycleEnd,
@@ -162,7 +182,13 @@ export function calculateBudgetView(data) {
     (transaction) => transaction.type === 'spent',
   )
 
-  const billsTotal = unpaidCycleBills.reduce(
+  const billsTotal = billsBeforeNextPay.reduce(
+    (sum, occurrence) =>
+      sum + Number(occurrence.bill.amount || 0),
+    0,
+  )
+
+  const cycleBillsTotal = unpaidCycleBills.reduce(
     (sum, occurrence) =>
       sum + Number(occurrence.bill.amount || 0),
     0,
@@ -180,30 +206,9 @@ export function calculateBudgetView(data) {
 
   const safeToSpend =
     Number(nextIncome?.amount || 0) -
-    billsTotal -
+    cycleBillsTotal -
     plannedTotal -
     spentTotal
-
-  const upcomingRows = [
-    ...cycleBills.map((occurrence) => ({
-      key: occurrence.key,
-      date: occurrence.date,
-      name: occurrence.bill.name,
-      category: occurrence.bill.category || 'Bill',
-      amount: Number(occurrence.bill.amount || 0),
-      type: 'bill',
-      paid: occurrence.paid,
-      occurrence,
-    })),
-    ...plannedCycle.map((transaction) => ({
-      key: transaction.id,
-      date: transaction.date,
-      name: transaction.name,
-      category: 'Planned',
-      amount: Number(transaction.amount || 0),
-      type: 'planned',
-    })),
-  ].sort((a, b) => a.date.localeCompare(b.date))
 
   const currentBalance = Number(data.settings.currentBalance || 0)
 
@@ -258,8 +263,11 @@ export function calculateBudgetView(data) {
     ...futureIncome.map((occurrence) => ({
       key: `income:${occurrence.key}`,
       date: occurrence.date,
-      name: occurrence.item.name,
-      category: 'Expected income',
+      name: occurrence.item.employer || occurrence.item.name,
+      category:
+        occurrence.item.kind === 'paycheck'
+          ? 'Expected paycheck'
+          : 'Expected income',
       signedAmount: Number(occurrence.amount || 0),
       type: 'income',
       occurrence,
@@ -278,16 +286,29 @@ export function calculateBudgetView(data) {
         occurrence,
       })),
     ...futurePlanned,
-  ].sort((a, b) => a.date.localeCompare(b.date))
+  ].sort((a, b) => {
+    const byDate = a.date.localeCompare(b.date)
+    if (byDate) return byDate
+    const priority = { income: 0, bill: 1, planned: 2 }
+    return (priority[a.type] ?? 9) - (priority[b.type] ?? 9)
+  })
 
-  let projectedBalance = currentBalance
+  let runningProjection = currentBalance
   const checkbookUpcoming = checkbookUpcomingBase.map((row) => {
-    projectedBalance += row.signedAmount
+    runningProjection += row.signedAmount
     return {
       ...row,
-      runningBalance: projectedBalance,
+      runningBalance: runningProjection,
     }
   })
+
+  const projectionEnd = addDays(now, 30)
+  const projectedBalance = checkbookUpcoming
+    .filter((row) => row.date <= projectionEnd)
+    .reduce(
+      (balance, row) => balance + row.signedAmount,
+      currentBalance,
+    )
 
   return {
     learnedNetPercent,
@@ -300,7 +321,6 @@ export function calculateBudgetView(data) {
     plannedTotal,
     spentTotal,
     safeToSpend,
-    upcomingRows,
     currentBalance,
     transactionLedger,
     plannedTransactions,

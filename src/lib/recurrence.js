@@ -14,8 +14,16 @@ export function scheduleOccurrences(
   if (!anchor || !startIso || !endIso) return []
 
   const output = []
+  const seen = new Set()
   const push = (date) => {
-    if (date >= startIso && date <= endIso) output.push(date)
+    if (
+      date >= startIso &&
+      date <= endIso &&
+      !seen.has(date)
+    ) {
+      output.push(date)
+      seen.add(date)
+    }
   }
 
   if (recurrence === 'once') {
@@ -35,6 +43,45 @@ export function scheduleOccurrences(
     }
 
     return output
+  }
+
+  if (recurrence === 'semimonthly') {
+    const start = toDate(startIso)
+    const end = toDate(endIso)
+    const configuredDays = Array.isArray(item.semimonthlyDays)
+      ? item.semimonthlyDays
+      : [1, 15]
+    const days = [...new Set(
+      configuredDays
+        .map((value) => Math.max(1, Math.min(31, Number(value || 1))))
+        .sort((a, b) => a - b),
+    )]
+
+    let year = start.getFullYear()
+    let month = start.getMonth()
+
+    while (
+      year < end.getFullYear() ||
+      (year === end.getFullYear() && month <= end.getMonth())
+    ) {
+      days.forEach((day) => {
+        const date = new Date(
+          year,
+          month,
+          Math.min(day, lastDayOfMonth(year, month)),
+        )
+        const iso = toIso(date)
+        if (iso >= anchor) push(iso)
+      })
+
+      month += 1
+      if (month > 11) {
+        month = 0
+        year += 1
+      }
+    }
+
+    return output.sort()
   }
 
   if (recurrence === 'monthly') {
@@ -97,6 +144,7 @@ export function recurrenceLabel(value, firstDate) {
   if (!firstDate) return 'Not scheduled'
   if (value === 'weekly') return `Weekly · ${weekday(firstDate)}`
   if (value === 'biweekly') return `Every 2 weeks · ${weekday(firstDate)}`
+  if (value === 'semimonthly') return 'Twice a month'
   if (value === 'monthly') return `Monthly · day ${toDate(firstDate).getDate()}`
   if (value === 'yearly') return 'Yearly'
   return 'One-time'

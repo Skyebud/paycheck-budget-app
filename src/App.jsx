@@ -12,15 +12,64 @@ import ActualPayModal from './modals/ActualPayModal'
 import BillDateModal from './modals/BillDateModal'
 import BillModal from './modals/BillModal'
 import IncomeModal from './modals/IncomeModal'
+import PaycheckSourceModal from './modals/PaycheckSourceModal'
 import TransactionModal from './modals/TransactionModal'
 import { calculateBudgetView } from './lib/budgetMath'
-import { todayIso } from './lib/dates'
+import { todayIso, toDate } from './lib/dates'
 
 function transactionEffect(transaction) {
   const amount = Number(transaction?.amount || 0)
   if (transaction?.type === 'deposit') return amount
   if (transaction?.type === 'spent') return -amount
   return 0
+}
+
+
+function median(values) {
+  const numbers = values
+    .map((value) => Number(value || 0))
+    .sort((a, b) => a - b)
+  if (!numbers.length) return 0
+  const middle = Math.floor(numbers.length / 2)
+  return numbers.length % 2
+    ? numbers[middle]
+    : (numbers[middle - 1] + numbers[middle]) / 2
+}
+
+function legacyPaycheckRecurrence(items) {
+  if (items.length < 2) return null
+
+  const sorted = [...items]
+    .filter((item) => item.firstDate)
+    .sort((a, b) => a.firstDate.localeCompare(b.firstDate))
+
+  if (sorted.length < 2) return null
+
+  const firstRate = Number(sorted[0].hourlyRate || 0)
+  const sameRate = sorted.every(
+    (item) => Number(item.hourlyRate || 0) === firstRate,
+  )
+  if (!sameRate) return null
+
+  const gaps = sorted.slice(1).map((item, index) => {
+    const previous = toDate(sorted[index].firstDate)
+    const current = toDate(item.firstDate)
+    return Math.round((current - previous) / 86400000)
+  })
+
+  if (gaps.every((gap) => gap === 7)) return 'weekly'
+  if (gaps.every((gap) => gap === 14)) return 'biweekly'
+
+  const sameDay = sorted.every(
+    (item) =>
+      toDate(item.firstDate).getDate() ===
+      toDate(sorted[0].firstDate).getDate(),
+  )
+  if (sameDay && gaps.every((gap) => gap >= 27 && gap <= 32)) {
+    return 'monthly'
+  }
+
+  return null
 }
 
 export default function App() {
@@ -31,6 +80,7 @@ export default function App() {
   const [transactionTab, setTransactionTab] = useState('all')
   const [modal, setModal] = useState(null)
   const [editingIncome, setEditingIncome] = useState(null)
+  const [editingPaycheckSource, setEditingPaycheckSource] = useState(null)
   const [editingBill, setEditingBill] = useState(null)
   const [editingTransaction, setEditingTransaction] = useState(null)
   const [actualTarget, setActualTarget] = useState(null)
@@ -43,9 +93,82 @@ export default function App() {
       data.settings.accentTheme || 'mint'
   }, [data.settings.themeMode, data.settings.accentTheme])
 
+  useEffect(() => {
+    const legacy = data.income.filter(
+      (item) =>
+        item.kind === 'paycheck' &&
+        (item.recurrence || 'once') === 'once',
+    )
+    const recurrence = legacyPaycheckRecurrence(legacy)
+    if (!recurrence) return
+
+    setData((current) => {
+      const currentLegacy = current.income.filter(
+        (item) =>
+          item.kind === 'paycheck' &&
+          (item.recurrence || 'once') === 'once',
+      )
+      const inferred = legacyPaycheckRecurrence(currentLegacy)
+      if (!inferred) return current
+
+      const sorted = [...currentLegacy].sort((a, b) =>
+        a.firstDate.localeCompare(b.firstDate),
+      )
+      const first = sorted[0]
+      const ids = new Set(sorted.map((item) => item.id))
+      const actuals = Object.assign(
+        {},
+        ...sorted.map((item) => item.actuals || {}),
+      )
+
+      const estimateOverrides = {
+        ...(first.estimateOverrides || {}),
+      }
+      sorted.forEach((item) => {
+        estimateOverrides[item.firstDate] = {
+          regularHours: Number(item.regularHours || 0),
+          overtimeHours: Number(item.overtimeHours || 0),
+          expectedNet: Number(item.expectedNet || 0),
+          amount: Number(item.amount || 0),
+        }
+      })
+
+      const source = {
+        ...first,
+        kind: 'paycheck',
+        employer: first.employer || '',
+        name: first.employer || 'Paycheck',
+        recurrence: inferred,
+        firstDate: first.firstDate,
+        regularHours: median(sorted.map((item) => item.regularHours)),
+        overtimeHours: median(sorted.map((item) => item.overtimeHours)),
+        estimateOverrides,
+        actuals,
+      }
+
+      return {
+        ...current,
+        income: [
+          ...current.income.filter((item) => !ids.has(item.id)),
+          source,
+        ],
+      }
+    })
+  }, [data.income, setData])
+
   const budgetView = useMemo(
     () => calculateBudgetView(data),
     [data],
+  )
+
+  const paycheckSources = useMemo(
+    () =>
+      data.income.filter(
+        (item) =>
+          item.kind === 'paycheck' &&
+          (item.recurrence || 'once') !== 'once',
+      ),
+    [data.income],
   )
 
   const updateSettings = (patch) =>
@@ -218,6 +341,19 @@ export default function App() {
       bills: current.bills.filter((bill) => bill.id !== id),
     }))
 
+  const savePaycheckSource = (item) => {
+    setData((current) => ({
+      ...current,
+      income: editingPaycheckSource
+        ? current.income.map((entry) =>
+            entry.id === item.id ? item : entry,
+          )
+        : [...current.income, item],
+    }))
+    setEditingPaycheckSource(null)
+    setModal(null)
+  }
+
   if (!data.setupComplete) {
     return <SetupScreen data={data} setData={setData} />
   }
@@ -323,6 +459,7 @@ export default function App() {
               setActualTarget(occurrence)
               setModal('actual')
             }}
+            onManagePaychecks={() => setView('settings')}
           />
         )}
 
@@ -335,6 +472,16 @@ export default function App() {
             data={data}
             updateSettings={updateSettings}
             learnedNetPercent={budgetView.learnedNetPercent}
+            paycheckSources={paycheckSources}
+            onAddPaycheck={() => {
+              setEditingPaycheckSource(null)
+              setModal('paycheck-source')
+            }}
+            onEditPaycheck={(item) => {
+              setEditingPaycheckSource(item)
+              setModal('paycheck-source')
+            }}
+            onDeletePaycheck={deleteIncome}
           />
         )}
       </main>
@@ -366,7 +513,6 @@ export default function App() {
       {modal === 'income' && (
         <IncomeModal
           item={editingIncome}
-          settings={data.settings}
           onClose={() => {
             setModal(null)
             setEditingIncome(null)
@@ -383,6 +529,18 @@ export default function App() {
             setModal(null)
             setEditingIncome(null)
           }}
+        />
+      )}
+
+      {modal === 'paycheck-source' && (
+        <PaycheckSourceModal
+          item={editingPaycheckSource}
+          settings={data.settings}
+          onClose={() => {
+            setModal(null)
+            setEditingPaycheckSource(null)
+          }}
+          onSave={savePaycheckSource}
         />
       )}
 
@@ -436,13 +594,18 @@ export default function App() {
               const newAmount = Number(actual.actualNet || 0)
               const oldAmount = Number(existingTransaction?.amount || 0)
               const balanceChange = newAmount - oldAmount
+              const sourceName =
+                actualTarget.item.employer || actualTarget.item.name
 
               const depositTransaction = {
                 id: transactionId,
                 type: 'deposit',
                 amount: newAmount,
-                category: 'Paycheck',
-                name: actualTarget.item.name,
+                category:
+                  actualTarget.item.kind === 'paycheck'
+                    ? 'Paycheck'
+                    : 'Other income',
+                name: sourceName,
                 date: actualTarget.date,
                 sourceIncomeId: actualTarget.item.id,
                 sourceOccurrenceDate: actualTarget.date,

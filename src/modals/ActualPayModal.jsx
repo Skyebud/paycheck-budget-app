@@ -10,7 +10,7 @@ export default function ActualPayModal({
 }) {
   const existing = occurrence.actual || {}
   const [actualNet, setActualNet] = useState(
-    existing.actualNet ?? '',
+    existing.actualNet ?? occurrence.amount ?? '',
   )
   const [regularHours, setRegularHours] = useState(
     existing.regularHours ?? occurrence.item.regularHours ?? 0,
@@ -29,12 +29,19 @@ export default function ActualPayModal({
     })
   }
 
+  const sourceName = occurrence.item.employer || occurrence.item.name
+
   return (
     <Modal
       title={`Record deposit · ${shortDate(occurrence.date)}`}
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
+        <div className="modal-context">
+          <strong>{sourceName}</strong>
+          <span>{occurrence.item.kind === 'paycheck' ? 'Paycheck' : 'Income'}</span>
+        </div>
+
         <Field label="Deposit amount">
           <input
             className="amount-input"
@@ -48,7 +55,7 @@ export default function ActualPayModal({
           />
         </Field>
 
-        {occurrence.item.payMode !== 'fixed' && (
+        {occurrence.item.kind === 'paycheck' && occurrence.item.payMode !== 'fixed' && (
           <div className="form-grid two">
             <Field label="Regular hours">
               <input

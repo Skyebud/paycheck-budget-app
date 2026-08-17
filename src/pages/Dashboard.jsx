@@ -40,13 +40,14 @@ export default function Dashboard({
     setEditingBalance(false)
   }
 
+  const nextIncomeName = nextIncome
+    ? nextIncome.item.employer || nextIncome.item.name
+    : ''
+
   return (
     <div className="page">
       <header className="page-head compact">
-        <div>
-          <h1>Dashboard</h1>
-          <p>Your account at a glance.</p>
-        </div>
+        <div><h1>Dashboard</h1></div>
 
         <div className="page-actions">
           <button
@@ -113,19 +114,21 @@ export default function Dashboard({
         <div className="account-stat">
           <span>Projected balance</span>
           <strong>{money(projectedBalance)}</strong>
-          <small>After scheduled items</small>
+          <small>Next 30 days</small>
         </div>
 
         <div className="account-stat">
           <span>Next income</span>
           <strong>{money(nextIncome?.amount || 0)}</strong>
           <small>
-            {nextIncome ? shortDate(nextIncome.date) : 'Not scheduled'}
+            {nextIncome
+              ? `${nextIncomeName} · ${shortDate(nextIncome.date)}`
+              : 'Not scheduled'}
           </small>
         </div>
 
         <div className="account-stat">
-          <span>Bills before next pay</span>
+          <span>Bills due before payday</span>
           <strong>{money(billsTotal)}</strong>
         </div>
       </section>

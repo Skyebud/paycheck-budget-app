@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
 import Segmented from '../components/Segmented'
@@ -6,61 +6,31 @@ import { uid } from '../lib/format'
 
 export default function IncomeModal({
   item,
-  settings,
   onClose,
   onSave,
 }) {
-  const [kind, setKind] = useState(item?.kind || 'paycheck')
   const [recurrence, setRecurrence] = useState(
     item?.recurrence || 'once',
   )
   const [firstDate, setFirstDate] = useState(item?.firstDate || '')
-  const [name, setName] = useState(item?.name || 'Paycheck')
-  const [payMode, setPayMode] = useState(item?.payMode || 'hourly')
-  const [hourlyRate, setHourlyRate] = useState(
-    item?.hourlyRate ?? settings.hourlyRate,
-  )
-  const [regularHours, setRegularHours] = useState(
-    item?.regularHours ?? 80,
-  )
-  const [overtimeHours, setOvertimeHours] = useState(
-    item?.overtimeHours ?? 0,
-  )
+  const [name, setName] = useState(item?.name || '')
   const [amount, setAmount] = useState(
     item?.amount ?? item?.expectedNet ?? '',
   )
 
-  useEffect(() => {
-    if (!item) setName(kind === 'paycheck' ? 'Paycheck' : 'Income')
-  }, [kind, item])
-
   const submit = (event) => {
     event.preventDefault()
-    if (!firstDate) return
+    if (!firstDate || !name.trim()) return
 
     onSave({
       ...(item || {}),
       id: item?.id || uid('income'),
-      name:
-        name.trim() ||
-        (kind === 'paycheck' ? 'Paycheck' : 'Income'),
-      kind,
+      name: name.trim(),
+      kind: 'other',
       recurrence,
       firstDate,
-      payMode,
-      hourlyRate: Number(hourlyRate || 0),
-      regularHours: Number(regularHours || 0),
-      overtimeHours: Number(overtimeHours || 0),
-      overtimeMultiplier: Number(
-        item?.overtimeMultiplier ||
-          settings.overtimeMultiplier ||
-          1.5,
-      ),
       amount: Number(amount || 0),
-      expectedNet:
-        payMode === 'fixed'
-          ? Number(amount || 0)
-          : Number(item?.expectedNet || 0),
+      expectedNet: Number(amount || 0),
       actuals: item?.actuals || {},
     })
   }
@@ -72,14 +42,13 @@ export default function IncomeModal({
       wide
     >
       <form className="modal-form" onSubmit={submit}>
-        <Field label="Income type">
-          <Segmented
-            value={kind}
-            onChange={setKind}
-            options={[
-              ['paycheck', 'Paycheck'],
-              ['other', 'Other income'],
-            ]}
+        <Field label="Income name">
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Refund, side job, reimbursement..."
+            autoFocus
+            required
           />
         </Field>
 
@@ -106,61 +75,9 @@ export default function IncomeModal({
             />
           </Field>
 
-          <Field label="Name">
+          <Field label="Expected amount">
             <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </Field>
-        </div>
-
-        {kind === 'paycheck' && (
-          <Field label="Pay type">
-            <Segmented
-              value={payMode}
-              onChange={setPayMode}
-              options={[
-                ['hourly', 'Hourly'],
-                ['fixed', 'Fixed amount'],
-              ]}
-            />
-          </Field>
-        )}
-
-        {kind === 'paycheck' && payMode === 'hourly' ? (
-          <div className="form-grid three">
-            <Field label="Hourly rate">
-              <input
-                type="number"
-                step="0.01"
-                value={hourlyRate}
-                onChange={(event) => setHourlyRate(event.target.value)}
-                required
-              />
-            </Field>
-
-            <Field label="Regular hours">
-              <input
-                type="number"
-                step="0.1"
-                value={regularHours}
-                onChange={(event) => setRegularHours(event.target.value)}
-              />
-            </Field>
-
-            <Field label="Overtime hours">
-              <input
-                type="number"
-                step="0.1"
-                value={overtimeHours}
-                onChange={(event) => setOvertimeHours(event.target.value)}
-              />
-            </Field>
-          </div>
-        ) : (
-          <Field label="Amount">
-            <input
+              className="amount-input"
               type="number"
               step="0.01"
               min="0"
@@ -169,7 +86,7 @@ export default function IncomeModal({
               required
             />
           </Field>
-        )}
+        </div>
 
         <div className="modal-actions">
           <button

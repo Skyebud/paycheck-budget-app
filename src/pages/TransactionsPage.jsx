@@ -1,7 +1,14 @@
-import { useMemo } from 'react'
 import EmptyState from '../components/EmptyState'
 import Tabs from '../components/Tabs'
 import { money, shortDate } from '../lib/format'
+
+function SignedAmount({ value }) {
+  return (
+    <span className={value >= 0 ? 'money-positive' : 'money-negative'}>
+      {value >= 0 ? '+' : '-'}{money(Math.abs(value))}
+    </span>
+  )
+}
 
 export default function TransactionsPage({
   tab,
@@ -14,23 +21,19 @@ export default function TransactionsPage({
   onEditTransaction,
   onDeleteTransaction,
 }) {
-  const shown = useMemo(() => {
-    if (tab === 'income') {
-      return ledger.filter((row) => row.type === 'deposit')
-    }
-    if (tab === 'expenses') {
-      return ledger.filter((row) => row.type === 'spent')
-    }
-    return ledger
-  }, [ledger, tab])
-
-  const totalIncome = ledger
+  const recordedIncome = ledger
     .filter((row) => row.type === 'deposit')
-    .reduce((sum, row) => sum + row.signedAmount, 0)
+    .reduce((sum, row) => sum + Number(row.transaction.amount || 0), 0)
 
-  const totalExpenses = ledger
+  const recordedExpenses = ledger
     .filter((row) => row.type === 'spent')
-    .reduce((sum, row) => sum + Math.abs(row.signedAmount), 0)
+    .reduce((sum, row) => sum + Number(row.transaction.amount || 0), 0)
+
+  const shown = ledger.filter((row) => {
+    if (tab === 'income') return row.type === 'deposit'
+    if (tab === 'expenses') return row.type === 'spent'
+    return true
+  })
 
   return (
     <div className="page">
@@ -65,11 +68,11 @@ export default function TransactionsPage({
         </div>
         <div>
           <span>Recorded income</span>
-          <strong>{money(totalIncome)}</strong>
+          <strong>{money(recordedIncome)}</strong>
         </div>
         <div>
           <span>Recorded expenses</span>
-          <strong>{money(totalExpenses)}</strong>
+          <strong>{money(recordedExpenses)}</strong>
         </div>
       </section>
 
@@ -87,55 +90,62 @@ export default function TransactionsPage({
       {tab !== 'planned' && (
         <section className="section-block flush-top">
           {shown.length ? (
-            <div className="finance-list ledger-list">
-              {shown.map((row) => (
-                <div className="finance-row transaction-row" key={row.key}>
-                  <div className="row-date">
-                    <strong>{shortDate(row.date)}</strong>
-                  </div>
+            <>
+              <div className="ledger-head" aria-hidden="true">
+                <span>Date</span>
+                <span>Description</span>
+                <span>Amount</span>
+                <span>Balance</span>
+                <span />
+              </div>
+              <div className="finance-list ledger-list">
+                {shown.map((row) => (
+                  <div className="finance-row transaction-row" key={row.key}>
+                    <div className="row-date">
+                      <strong>{shortDate(row.date)}</strong>
+                    </div>
 
-                  <div className="row-main">
-                    <strong>{row.name}</strong>
-                    <span>{row.category}</span>
-                  </div>
+                    <div className="row-main">
+                      <strong>{row.name}</strong>
+                      <span>{row.category}</span>
+                    </div>
 
-                  <div className={`row-amount ${row.signedAmount >= 0 ? 'money-positive' : 'money-negative'}`}>
-                    {row.signedAmount >= 0 ? '+' : '-'}
-                    {money(Math.abs(row.signedAmount))}
-                  </div>
+                    <div className="row-amount">
+                      <SignedAmount value={row.signedAmount} />
+                    </div>
 
-                  <div className="transaction-balance">
-                    <span>Balance</span>
-                    <strong>{money(row.runningBalance)}</strong>
-                  </div>
+                    <div className="transaction-balance">
+                      <strong>{money(row.runningBalance)}</strong>
+                    </div>
 
-                  <div className="row-action action-pair">
-                    {row.transaction.sourceBillId || row.transaction.sourceIncomeId ? (
-                      <span className="linked-label">
-                        {row.transaction.sourceBillId ? 'Bill payment' : 'Income record'}
-                      </span>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => onEditTransaction(row.transaction)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button danger"
-                          onClick={() => onDeleteTransaction(row.transaction.id)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
+                    <div className="row-action action-pair">
+                      {row.transaction.sourceBillId || row.transaction.sourceIncomeId ? (
+                        <span className="linked-label">
+                          {row.transaction.sourceBillId ? 'Bill' : 'Income'}
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => onEditTransaction(row.transaction)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button danger"
+                            onClick={() => onDeleteTransaction(row.transaction.id)}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           ) : (
             <EmptyState
               title="No transactions here yet."
@@ -157,7 +167,7 @@ export default function TransactionsPage({
                   </div>
                   <div className="row-main">
                     <strong>{item.name || item.category}</strong>
-                    <span>Planned purchase</span>
+                    <span>{item.category || 'Planned purchase'}</span>
                   </div>
                   <div className="row-amount">{money(item.amount)}</div>
                   <div className="row-action action-pair">

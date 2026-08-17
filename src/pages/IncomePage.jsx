@@ -5,6 +5,10 @@ import { money, shortDate } from '../lib/format'
 import { todayIso } from '../lib/dates'
 import { recurrenceLabel } from '../lib/recurrence'
 
+function sourceName(item) {
+  return item.employer || item.name || 'Income'
+}
+
 function IncomeOccurrenceRow({ occurrence, onRecord }) {
   return (
     <div className="finance-row">
@@ -13,28 +17,28 @@ function IncomeOccurrenceRow({ occurrence, onRecord }) {
       </div>
 
       <div className="row-main">
-        <strong>{occurrence.item.name}</strong>
+        <strong>{sourceName(occurrence.item)}</strong>
         <span>
           {occurrence.actual?.actualNet != null
             ? 'Recorded deposit'
-            : 'Estimated deposit'}
+            : occurrence.item.kind === 'paycheck'
+              ? 'Estimated paycheck'
+              : 'Expected income'}
         </span>
       </div>
 
       <div className="row-amount">{money(occurrence.amount)}</div>
 
       <div className="row-action">
-        {occurrence.item.kind === 'paycheck' && (
-          <button
-            type="button"
-            className="small-button"
-            onClick={() => onRecord(occurrence)}
-          >
-            {occurrence.actual?.actualNet != null
-              ? 'Edit deposit'
-              : 'Record deposit'}
-          </button>
-        )}
+        <button
+          type="button"
+          className="small-button"
+          onClick={() => onRecord(occurrence)}
+        >
+          {occurrence.actual?.actualNet != null
+            ? 'Edit deposit'
+            : 'Record deposit'}
+        </button>
       </div>
     </div>
   )
@@ -51,11 +55,12 @@ export default function IncomePage({
   onEdit,
   onDelete,
   onRecord,
+  onManagePaychecks,
 }) {
   const now = todayIso()
 
   const future = occurrences
-    .filter((occurrence) => occurrence.date >= now)
+    .filter((occurrence) => occurrence.date >= now && !occurrence.actual)
     .slice(0, 8)
 
   const history = occurrences
@@ -63,17 +68,31 @@ export default function IncomePage({
     .slice(-20)
     .reverse()
 
-  const shownItems =
-    tab === 'recurring'
-      ? income.filter((item) => item.recurrence !== 'once')
-      : income.filter((item) => item.recurrence === 'once')
+  const recurring = income.filter(
+    (item) => (item.recurrence || 'once') !== 'once',
+  )
+  const oneTime = income.filter(
+    (item) =>
+      item.kind !== 'paycheck' &&
+      (item.recurrence || 'once') === 'once',
+  )
+
+  const shownItems = tab === 'recurring' ? recurring : oneTime
+
+  const nextOccurrenceFor = (item) =>
+    occurrences.find(
+      (occurrence) =>
+        occurrence.item.id === item.id &&
+        occurrence.date >= now &&
+        !occurrence.actual,
+    )
 
   return (
     <div className="page">
       <header className="page-head">
         <div>
           <h1>Income</h1>
-          <p>Paychecks, recurring income, and other deposits.</p>
+          <p>Upcoming deposits and income history.</p>
         </div>
         <button type="button" className="primary-button" onClick={onAdd}>
           <Icon name="plus" />
@@ -100,7 +119,7 @@ export default function IncomePage({
               <strong>{money(future[0]?.amount || 0)}</strong>
               <small>
                 {future[0]
-                  ? `${future[0].item.name} · ${shortDate(future[0].date)}`
+                  ? `${sourceName(future[0].item)} · ${shortDate(future[0].date)}`
                   : 'Not scheduled'}
               </small>
             </div>
@@ -110,14 +129,14 @@ export default function IncomePage({
               <strong>{effectiveNetPercent.toFixed(1)}%</strong>
               <small>
                 {learnedNetPercent != null
-                  ? 'Based on recorded deposits'
+                  ? 'Based on recorded paychecks'
                   : 'Current estimate'}
               </small>
             </div>
 
             <div>
-              <span>Income sources</span>
-              <strong>{income.length}</strong>
+              <span>Recurring sources</span>
+              <strong>{recurring.length}</strong>
             </div>
           </section>
 
@@ -151,52 +170,71 @@ export default function IncomePage({
         <section className="section-block flush-top">
           {shownItems.length ? (
             <div className="finance-list">
-              {shownItems.map((item) => (
-                <div className="finance-row" key={item.id}>
-                  <div className="row-icon">
-                    <Icon name="income" />
-                  </div>
+              {shownItems.map((item) => {
+                const nextOccurrence = nextOccurrenceFor(item)
+                const isPaycheck = item.kind === 'paycheck'
 
-                  <div className="row-main">
-                    <strong>{item.name}</strong>
-                    <span>
-                      {recurrenceLabel(item.recurrence, item.firstDate)} ·{' '}
-                      {item.kind === 'paycheck'
-                        ? 'Paycheck'
-                        : 'Other income'}
-                    </span>
-                  </div>
+                return (
+                  <div className="finance-row" key={item.id}>
+                    <div className="row-icon">
+                      <Icon name="income" />
+                    </div>
 
-                  <div className="row-amount">
-                    {item.kind === 'paycheck' && item.payMode === 'hourly'
-                      ? `${money(item.hourlyRate)}/hr`
-                      : money(item.amount || item.expectedNet)}
-                  </div>
+                    <div className="row-main">
+                      <strong>{sourceName(item)}</strong>
+                      <span>
+                        {recurrenceLabel(item.recurrence, item.firstDate)} ·{' '}
+                        {isPaycheck ? 'Paycheck' : 'Income'}
+                      </span>
+                    </div>
 
-                  <div className="row-action action-pair">
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => onEdit(item)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button danger"
-                      onClick={() => onDelete(item.id)}
-                    >
-                      Delete
-                    </button>
+                    <div className="row-amount">
+                      {nextOccurrence
+                        ? money(nextOccurrence.amount)
+                        : money(item.amount || item.expectedNet || 0)}
+                    </div>
+
+                    <div className="row-action action-pair">
+                      {isPaycheck ? (
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={onManagePaychecks}
+                        >
+                          Manage
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => onEdit(item)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button danger"
+                            onClick={() => onDelete(item.id)}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <EmptyState
-              title={`No ${tab === 'recurring' ? 'recurring' : 'one-time'} income.`}
-              action="Add income"
-              onAction={onAdd}
+              title={
+                tab === 'recurring'
+                  ? 'No recurring income.'
+                  : 'No one-time income.'
+              }
+              action={tab === 'one-time' ? 'Add income' : undefined}
+              onAction={tab === 'one-time' ? onAdd : undefined}
             />
           )}
         </section>
