@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
 import Segmented from '../components/Segmented'
@@ -104,8 +105,7 @@ export default function TransactionModal({
           </Field>
 
           <Field label="Date">
-            <input
-              type="date"
+            <DateInput
               value={date}
               onChange={(event) => setDate(event.target.value)}
               required
@@ -135,7 +135,11 @@ export default function TransactionModal({
             Cancel
           </button>
           <button type="submit" className="primary-button">
-            {item ? 'Save changes' : isPlanned ? 'Add planned purchase' : 'Add transaction'}
+            {item
+              ? 'Save changes'
+              : isPlanned
+                ? 'Add planned purchase'
+                : 'Add transaction'}
           </button>
         </div>
       </form>

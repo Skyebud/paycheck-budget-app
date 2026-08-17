@@ -459,7 +459,16 @@ export default function App() {
               setActualTarget(occurrence)
               setModal('actual')
             }}
-            onManagePaychecks={() => setView('settings')}
+            paycheckSources={paycheckSources}
+            onAddPaycheck={() => {
+              setEditingPaycheckSource(null)
+              setModal('paycheck-source')
+            }}
+            onEditPaycheck={(item) => {
+              setEditingPaycheckSource(item)
+              setModal('paycheck-source')
+            }}
+            onDeletePaycheck={deleteIncome}
           />
         )}
 

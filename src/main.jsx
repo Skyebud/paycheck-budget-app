@@ -5,6 +5,7 @@ import AuthGate from './AuthGate.jsx'
 import { BudgetProvider } from './BudgetStore.jsx'
 import './styles.css'
 import './checkbook.css'
+import './v4.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

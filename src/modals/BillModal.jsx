@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Icon from '../components/Icon'
 import Modal from '../components/Modal'
@@ -94,8 +95,7 @@ export default function BillModal({
           <Field
             label={scheduleType === 'once' ? 'Due date' : 'First due date'}
           >
-            <input
-              type="date"
+            <DateInput
               value={firstDate}
               onChange={(event) => setFirstDate(event.target.value)}
               required

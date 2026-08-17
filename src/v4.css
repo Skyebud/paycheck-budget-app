@@ -1,0 +1,153 @@
+/* v4: fixed light/dark themes, visible date picker, income/paycheck organization */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --accent: #59b7ff;
+  --accent-soft: rgba(89, 183, 255, .13);
+  --accent-strong: #82c8ff;
+
+  --bg: #050a11;
+  --sidebar: #03070c;
+  --surface: #091321;
+  --surface-2: #0c1929;
+  --surface-3: #102238;
+
+  --border: #1b3550;
+  --border-soft: #11283d;
+
+  --text: #edf5fd;
+  --muted: #8ca4ba;
+  --subtle: #5e7890;
+  --danger: #ff7d86;
+
+  --shadow: 0 24px 60px rgba(0, 0, 0, .38);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --accent: #0878c9;
+  --accent-soft: rgba(8, 120, 201, .10);
+  --accent-strong: #0067b5;
+
+  --bg: #f4f7fa;
+  --sidebar: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #edf3f8;
+  --surface-3: #e4edf5;
+
+  --border: #cbd8e3;
+  --border-soft: #dce6ee;
+
+  --text: #13202c;
+  --muted: #607486;
+  --subtle: #8192a1;
+  --danger: #c83f4c;
+
+  --shadow: 0 20px 50px rgba(25, 53, 76, .10);
+}
+
+/* Date input is wrapped with our own always-visible calendar button. */
+.date-input-shell {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.date-input-shell:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field .date-input-shell input,
+.date-input-shell input {
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  color: var(--text);
+  padding: 9px 11px;
+}
+
+.date-input-shell input::-webkit-calendar-picker-indicator {
+  display: none;
+  opacity: 0;
+}
+
+.date-picker-button {
+  border: 0;
+  border-left: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.date-picker-button:hover {
+  background: var(--surface-3);
+  color: var(--accent-strong);
+}
+
+.date-picker-button .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.income-section-head {
+  margin-bottom: 0;
+}
+
+.paycheck-income-row .row-icon {
+  color: var(--accent);
+}
+
+.advanced-settings {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.advanced-settings summary {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  list-style: none;
+  user-select: none;
+}
+
+.advanced-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings summary::after {
+  content: '+';
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.advanced-settings[open] summary::after {
+  content: '−';
+}
+
+.advanced-settings-body {
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 620px) {
+  .date-input-shell {
+    grid-template-columns: minmax(0, 1fr) 46px;
+  }
+}

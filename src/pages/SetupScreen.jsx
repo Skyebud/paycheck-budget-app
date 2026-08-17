@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Segmented from '../components/Segmented'
 import { todayIso } from '../lib/dates'
@@ -85,8 +86,7 @@ export default function SetupScreen({ data, setData }) {
           <Field
             label={recurrence === 'once' ? 'Date' : 'First payment'}
           >
-            <input
-              type="date"
+            <DateInput
               value={firstDate}
               onChange={(event) => setFirstDate(event.target.value)}
             />

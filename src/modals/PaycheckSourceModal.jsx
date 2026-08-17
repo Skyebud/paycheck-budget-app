@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
 import Segmented from '../components/Segmented'
@@ -38,6 +39,9 @@ export default function PaycheckSourceModal({
   )
   const [overtimeHours, setOvertimeHours] = useState(
     item?.overtimeHours ?? 0,
+  )
+  const [overtimeMultiplier, setOvertimeMultiplier] = useState(
+    item?.overtimeMultiplier ?? settings.overtimeMultiplier ?? 1.5,
   )
   const [fixedAmount, setFixedAmount] = useState(
     item?.expectedNet ?? item?.amount ?? '',
@@ -81,9 +85,7 @@ export default function PaycheckSourceModal({
       hourlyRate: Number(hourlyRate || 0),
       regularHours: Number(regularHours || 0),
       overtimeHours: Number(overtimeHours || 0),
-      overtimeMultiplier: Number(
-        item?.overtimeMultiplier || settings.overtimeMultiplier || 1.5,
-      ),
+      overtimeMultiplier: Number(overtimeMultiplier || 1.5),
       amount: payMode === 'fixed' ? Number(fixedAmount || 0) : 0,
       expectedNet:
         payMode === 'fixed'
@@ -95,7 +97,7 @@ export default function PaycheckSourceModal({
 
   return (
     <Modal
-      title={item ? 'Edit paycheck source' : 'Add paycheck source'}
+      title={item ? 'Edit paycheck' : 'Add paycheck'}
       onClose={onClose}
       wide
     >
@@ -104,7 +106,7 @@ export default function PaycheckSourceModal({
           <input
             value={employer}
             onChange={(event) => setEmployer(event.target.value)}
-            placeholder="DeVry University"
+            placeholder="Employer name"
             autoFocus
             required
           />
@@ -125,8 +127,7 @@ export default function PaycheckSourceModal({
 
         <div className="form-grid two">
           <Field label="Next payday">
-            <input
-              type="date"
+            <DateInput
               value={firstDate}
               onChange={(event) => setFirstDate(event.target.value)}
               required
@@ -174,39 +175,53 @@ export default function PaycheckSourceModal({
         </Field>
 
         {payMode === 'hourly' ? (
-          <div className="form-grid three">
-            <Field label="Hourly rate">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={hourlyRate}
-                onChange={(event) => setHourlyRate(event.target.value)}
-                required
-              />
-            </Field>
+          <>
+            <div className="form-grid three">
+              <Field label="Hourly rate">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={hourlyRate}
+                  onChange={(event) => setHourlyRate(event.target.value)}
+                  required
+                />
+              </Field>
 
-            <Field label="Regular hours per check">
+              <Field label="Regular hours per check">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={regularHours}
+                  onChange={(event) => setRegularHours(event.target.value)}
+                  required
+                />
+              </Field>
+
+              <Field label="Typical overtime hours">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={overtimeHours}
+                  onChange={(event) => setOvertimeHours(event.target.value)}
+                />
+              </Field>
+            </div>
+
+            <Field label="Overtime multiplier">
               <input
                 type="number"
                 step="0.1"
-                min="0"
-                value={regularHours}
-                onChange={(event) => setRegularHours(event.target.value)}
-                required
+                min="1"
+                value={overtimeMultiplier}
+                onChange={(event) =>
+                  setOvertimeMultiplier(event.target.value)
+                }
               />
             </Field>
-
-            <Field label="Typical overtime hours">
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={overtimeHours}
-                onChange={(event) => setOvertimeHours(event.target.value)}
-              />
-            </Field>
-          </div>
+          </>
         ) : (
           <Field label="Expected deposit">
             <input
@@ -230,7 +245,7 @@ export default function PaycheckSourceModal({
             Cancel
           </button>
           <button type="submit" className="primary-button">
-            {item ? 'Save changes' : 'Add paycheck source'}
+            {item ? 'Save changes' : 'Add paycheck'}
           </button>
         </div>
       </form>

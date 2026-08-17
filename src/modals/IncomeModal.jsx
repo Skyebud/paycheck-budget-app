@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Modal from '../components/Modal'
-import Segmented from '../components/Segmented'
 import { uid } from '../lib/format'
 
 export default function IncomeModal({
@@ -9,10 +9,7 @@ export default function IncomeModal({
   onClose,
   onSave,
 }) {
-  const [recurrence, setRecurrence] = useState(
-    item?.recurrence || 'once',
-  )
-  const [firstDate, setFirstDate] = useState(item?.firstDate || '')
+  const [date, setDate] = useState(item?.firstDate || '')
   const [name, setName] = useState(item?.name || '')
   const [amount, setAmount] = useState(
     item?.amount ?? item?.expectedNet ?? '',
@@ -20,15 +17,15 @@ export default function IncomeModal({
 
   const submit = (event) => {
     event.preventDefault()
-    if (!firstDate || !name.trim()) return
+    if (!date || !name.trim()) return
 
     onSave({
       ...(item || {}),
       id: item?.id || uid('income'),
       name: name.trim(),
       kind: 'other',
-      recurrence,
-      firstDate,
+      recurrence: 'once',
+      firstDate: date,
       amount: Number(amount || 0),
       expectedNet: Number(amount || 0),
       actuals: item?.actuals || {},
@@ -37,7 +34,7 @@ export default function IncomeModal({
 
   return (
     <Modal
-      title={item ? 'Edit income' : 'Add income'}
+      title={item ? 'Edit one-time income' : 'Add one-time income'}
       onClose={onClose}
       wide
     >
@@ -52,25 +49,11 @@ export default function IncomeModal({
           />
         </Field>
 
-        <Field label="Frequency">
-          <Segmented
-            value={recurrence}
-            onChange={setRecurrence}
-            options={[
-              ['once', 'One-time'],
-              ['weekly', 'Weekly'],
-              ['biweekly', 'Every 2 weeks'],
-              ['monthly', 'Monthly'],
-            ]}
-          />
-        </Field>
-
         <div className="form-grid two">
-          <Field label={recurrence === 'once' ? 'Deposit date' : 'First deposit date'}>
-            <input
-              type="date"
-              value={firstDate}
-              onChange={(event) => setFirstDate(event.target.value)}
+          <Field label="Deposit date">
+            <DateInput
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
               required
             />
           </Field>
