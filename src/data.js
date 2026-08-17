@@ -7,6 +7,8 @@ export const initialData = {
     safetyBuffer: 250,
     currency: 'USD',
     payFrequency: 'Biweekly',
+    themeMode: 'dark',
+    accentTheme: 'mint',
   },
   paychecks: [
     {

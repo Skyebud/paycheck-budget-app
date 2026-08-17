@@ -30,7 +30,7 @@ const navItems = [
   ['dashboard', 'Dashboard'],
   ['paychecks', 'Income'],
   ['bills', 'Bills'],
-  ['transactions', 'Transactions'],
+  ['transactions', 'Spending'],
   ['goals', 'Goals'],
   ['settings', 'Settings'],
 ]
@@ -161,6 +161,10 @@ function App() {
   const [purchaseAmount, setPurchaseAmount] = useState('')
 
   useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(data)), [data])
+  useEffect(() => {
+    document.documentElement.dataset.theme = data.settings.themeMode || 'dark'
+    document.documentElement.dataset.accent = data.settings.accentTheme || 'mint'
+  }, [data.settings.themeMode, data.settings.accentTheme])
 
   const sortedPaychecks = useMemo(() => [...data.paychecks].sort((a, b) => a.date.localeCompare(b.date)), [data.paychecks])
   const selected = sortedPaychecks.find(p => p.id === selectedPaycheckId) || sortedPaychecks[0]
@@ -201,11 +205,12 @@ function App() {
   }
 
   const paycheckStats = useMemo(() => {
-    if (!selected) return { net: 0, bills: 0, planned: 0, safe: 0 }
+    if (!selected) return { net: 0, bills: 0, planned: 0, spent: 0, safe: 0 }
     const net = projectedNetForPaycheck(selected)
     const bills = selectedOccurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((s, o) => s + Number(o.bill.amount), 0)
     const planned = data.transactions.filter(t => t.paycheckId === selected.id && t.type === 'planned').reduce((s, t) => s + Number(t.amount), 0)
-    return { net, bills, planned, safe: net - bills - planned }
+    const spent = data.transactions.filter(t => t.paycheckId === selected.id && t.type === 'spent').reduce((s, t) => s + Number(t.amount), 0)
+    return { net, bills, planned, spent, safe: net - bills - planned - spent }
   }, [selected, selectedOccurrences, data.transactions, effectiveNetPercent, data.settings.hourlyRate, data.settings.overtimeMultiplier])
 
   const gross = grossForPaycheck(selected)
@@ -269,17 +274,16 @@ function App() {
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark">P</div><div><strong>Paycheck</strong><span>Budget</span></div></div>
       <nav>{navItems.map(([id, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span></button>)}</nav>
-      <div className="sidebar-foot"><span>Private budget</span><small>Your plan, bills, and goals in one place.</small></div>
     </aside>
 
     <main className="content">
       <header className="topbar">
-        <div><span className="eyebrow">PERSONAL BUDGET</span><h1>{navItems.find(n => n[0] === view)?.[1]}</h1></div>
+        <div><h1>{navItems.find(n => n[0] === view)?.[1]}</h1></div>
         <div className="top-actions">
           <select value={selectedPaycheckId} onChange={e => setSelectedPaycheckId(e.target.value)}>
             {sortedPaychecks.map(p => <option key={p.id} value={p.id}>{shortDate(p.date)} · {money(projectedNetForPaycheck(p))}</option>)}
           </select>
-          <button className="primary" onClick={() => setModal('transaction')}><Icon name="plus"/> Add expense</button>
+          <button className="primary" onClick={() => setModal('quickSpend')}><Icon name="plus"/> Add spending</button>
         </div>
       </header>
 
@@ -288,31 +292,74 @@ function App() {
           <div className="safe-card">
             <div className="safe-top"><span>SAFE TO SPEND</span><div className={`status ${paycheckStats.safe >= data.settings.safetyBuffer ? 'good' : 'warn'}`}>{paycheckStats.safe >= data.settings.safetyBuffer ? 'On track' : 'Below buffer'}</div></div>
             <div className="safe-amount">{money(paycheckStats.safe)}</div>
-            <p>What remains from {selected?.label} after upcoming bills and planned purchases.</p>
+            <p>{selected?.label}</p>
             <div className="safe-breakdown">
               <div><span>Income</span><strong>{money(paycheckStats.net)}</strong></div>
               <div><span>Bills</span><strong>−{money(paycheckStats.bills)}</strong></div>
               <div><span>Planned</span><strong>−{money(paycheckStats.planned)}</strong></div>
+              <div><span>Spent</span><strong>−{money(paycheckStats.spent)}</strong></div>
             </div>
           </div>
 
           <div className="card paycheck-card">
-            <div className="card-title"><div><span className="eyebrow">SELECTED PAYCHECK</span><h2>{selected?.label}</h2></div><Icon name="wallet"/></div>
+            <div className="card-title"><div><h2>{selected?.label}</h2></div><Icon name="wallet"/></div>
             <div className="big-secondary">{money(projectedNetForPaycheck(selected))}</div>
             <p>{selected ? longDate(selected.date) : ''}</p>
             <div className="mini-grid"><div><span>Gross estimate</span><b>{money(gross)}</b></div><div><span>Take-home estimate</span><b>{money(estimatedFromHours)}</b></div></div>
           </div>
         </section>
 
-        <section className="dashboard-grid">
+        <section className="dashboard-grid dashboard-priority-grid">
+          <div className="card span-2 bills-priority-card">
+            <div className="section-head"><div><h2>Upcoming bills</h2></div><button className="text-btn" onClick={() => setView('bills')}>Manage</button></div>
+            <div className="item-list">
+              {selectedOccurrences.length === 0 && <div className="empty-state">No bills are due from this paycheck.</div>}
+              {selectedOccurrences.map(({ bill, dueDate }) => {
+                const paid = bill.paidDates.includes(dueDate)
+                return <div className="list-row" key={`${bill.id}-${dueDate}`}>
+                  <button className={`check ${paid ? 'done' : ''}`} onClick={() => toggleOccurrencePaid(bill.id, dueDate)}>{paid && <Icon name="check"/>}</button>
+                  <div className="row-main"><strong>{bill.name}</strong><span>{shortDate(dueDate)} · {scheduleLabel(bill)}</span></div>
+                  <strong>{money(bill.amount)}</strong>
+                </div>
+              })}
+            </div>
+          </div>
+
+          <div className="card spending-summary-card">
+            <div className="section-head"><div><h2>Spending</h2></div><button className="text-btn" onClick={() => setModal('quickSpend')}><Icon name="plus"/> Add</button></div>
+            <div className="spending-total">{money(paycheckStats.spent)}</div>
+
+            <div className="spending-categories">
+              {Object.entries(data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'spent').reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + Number(t.amount); return acc }, {})).slice(0,4).map(([category, amount]) => <div key={category}><span>{category}</span><strong>{money(amount)}</strong></div>)}
+              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'spent').length === 0 && <span className="muted">No spending recorded yet.</span>}
+            </div>
+          </div>
+
+          <div className="card span-2 planned-card">
+            <div className="section-head"><div><h2>Planned purchases</h2></div><button className="text-btn" onClick={() => setModal('plannedPurchase')}><Icon name="plus"/> Add</button></div>
+            <div className="item-list">
+              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').map(t => <div className="list-row" key={t.id}><div className="planned-dot"/><div className="row-main"><strong>{t.name}</strong><span>{shortDate(t.date)} · {t.category}</span></div><strong>{money(t.amount)}</strong></div>)}
+              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').length === 0 && <div className="empty-state">No planned purchases assigned to this paycheck.</div>}
+            </div>
+          </div>
+
+          <div className="card afford-card">
+            <h2>Purchase check</h2>
+            <label>Purchase amount<div className="money-input"><span>$</span><input inputMode="decimal" placeholder="0.00" value={purchaseAmount} onChange={e => setPurchaseAmount(e.target.value.replace(/[^0-9.]/g, ''))}/></div></label>
+            <div className={`afford-result ${afterPurchase >= data.settings.safetyBuffer ? 'good' : 'warn'}`}>
+              <span>Remaining</span><strong>{money(afterPurchase)}</strong><small>{afterPurchase >= data.settings.safetyBuffer ? `Above ${money(data.settings.safetyBuffer)} buffer` : `Below ${money(data.settings.safetyBuffer)} buffer`}</small>
+            </div>
+          </div>
+
           <div className="card span-2">
-            <div className="section-head"><div><span className="eyebrow">CASH FLOW</span><h2>Paycheck timeline</h2></div><button className="text-btn" onClick={() => setView('paychecks')}>View income</button></div>
+            <div className="section-head"><div><h2>Paycheck timeline</h2></div><button className="text-btn" onClick={() => setView('paychecks')}>Income</button></div>
             <div className="timeline">
               {sortedPaychecks.slice(0, 4).map((p, i) => {
                 const occurrences = occurrencesForPaycheck(p)
-                const bills = occurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((s, o) => s + Number(o.bill.amount), 0)
-                const planned = data.transactions.filter(t => t.paycheckId === p.id && t.type === 'planned').reduce((s, t) => s + Number(t.amount), 0)
-                const remain = projectedNetForPaycheck(p) - bills - planned
+                const bills = occurrences.filter(o => !o.bill.paidDates.includes(o.dueDate)).reduce((sum, o) => sum + Number(o.bill.amount), 0)
+                const planned = data.transactions.filter(t => t.paycheckId === p.id && t.type === 'planned').reduce((sum, t) => sum + Number(t.amount), 0)
+                const spent = data.transactions.filter(t => t.paycheckId === p.id && t.type === 'spent').reduce((sum, t) => sum + Number(t.amount), 0)
+                const remain = projectedNetForPaycheck(p) - bills - planned - spent
                 return <button key={p.id} onClick={() => setSelectedPaycheckId(p.id)} className={`timeline-item ${p.id === selectedPaycheckId ? 'selected' : ''}`}>
                   <div className="timeline-dot">{i + 1}</div><span>{shortDate(p.date)}</span><strong>{money(remain)}</strong><small>projected left</small>
                 </button>
@@ -320,32 +367,8 @@ function App() {
             </div>
           </div>
 
-          <div className="card afford-card">
-            <span className="eyebrow">QUICK CHECK</span><h2>Can I afford it?</h2>
-            <label>Purchase amount<div className="money-input"><span>$</span><input inputMode="decimal" placeholder="0.00" value={purchaseAmount} onChange={e => setPurchaseAmount(e.target.value.replace(/[^0-9.]/g, ''))}/></div></label>
-            <div className={`afford-result ${afterPurchase >= data.settings.safetyBuffer ? 'good' : 'warn'}`}>
-              <span>Safe after purchase</span><strong>{money(afterPurchase)}</strong><small>{afterPurchase >= data.settings.safetyBuffer ? `Your ${money(data.settings.safetyBuffer)} buffer stays protected.` : `This would take you below your ${money(data.settings.safetyBuffer)} buffer.`}</small>
-            </div>
-          </div>
-
-          <div className="card span-2">
-            <div className="section-head"><div><span className="eyebrow">THIS PAYCHECK</span><h2>Upcoming bills & plans</h2></div><button className="text-btn" onClick={() => { setEditingBill(null); setModal('bill') }}><Icon name="plus"/> Add bill</button></div>
-            <div className="item-list">
-              {selectedOccurrences.length === 0 && data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').length === 0 && <div className="empty-state">Nothing is committed to this paycheck yet.</div>}
-              {selectedOccurrences.map(({ bill, dueDate }) => {
-                const paid = bill.paidDates.includes(dueDate)
-                return <div className="list-row" key={`${bill.id}-${dueDate}`}>
-                  <button className={`check ${paid ? 'done' : ''}`} onClick={() => toggleOccurrencePaid(bill.id, dueDate)}>{paid && <Icon name="check"/>}</button>
-                  <div className="row-main"><strong>{bill.name}</strong><span>{shortDate(dueDate)} · {bill.category} · {scheduleLabel(bill)}</span></div>
-                  <strong>{money(bill.amount)}</strong>
-                </div>
-              })}
-              {data.transactions.filter(t => t.paycheckId === selectedPaycheckId && t.type === 'planned').map(t => <div className="list-row" key={t.id}><div className="planned-dot"/><div className="row-main"><strong>{t.name}</strong><span>{shortDate(t.date)} · Planned purchase</span></div><strong>{money(t.amount)}</strong></div>)}
-            </div>
-          </div>
-
           <div className="card">
-            <div className="section-head"><div><span className="eyebrow">GOALS</span><h2>What you're building toward</h2></div><button className="text-btn" onClick={() => setView('goals')}>View all</button></div>
+            <div className="section-head"><div><h2>Goals</h2></div><button className="text-btn" onClick={() => setView('goals')}>View all</button></div>
             <div className="goal-stack">{data.goals.slice(0, 3).map(g => <div className="goal-mini" key={g.id}><div><strong>{g.name}</strong><span>{money(g.saved)} / {money(g.target)}</span></div><Progress value={(g.saved / g.target) * 100}/></div>)}</div>
           </div>
         </section>
@@ -355,13 +378,13 @@ function App() {
         <div className="income-summary-grid">
           <div className="metric-card"><span>Selected deposit</span><strong>{money(projectedNetForPaycheck(selected))}</strong><small>{selected?.actualNet != null ? 'Actual deposit received' : `Projected for ${selected ? longDate(selected.date) : ''}`}</small></div>
           <div className="metric-card"><span>Gross estimate</span><strong>{money(gross)}</strong><small>{Number(selected?.regularHours || 0) + Number(selected?.overtimeHours || 0)} total hours · {Number(selected?.overtimeHours || 0)} OT</small></div>
-          <div className="metric-card"><span>{learnedNetPercent != null ? 'Learned take-home rate' : 'Starting take-home rate'}</span><strong>{effectiveNetPercent.toFixed(1)}%</strong><small>{learnedNetPercent != null ? `Based on ${actualPaychecks.length} actual paycheck${actualPaychecks.length === 1 ? '' : 's'}` : 'Updates after you enter an actual deposit'}</small></div>
-          <div className="metric-card"><span>Pay schedule</span><strong>{data.settings.payFrequency}</strong><small>Income planning cadence</small></div>
+          <div className="metric-card"><span>Net rate</span><strong>{effectiveNetPercent.toFixed(1)}%</strong><small>{learnedNetPercent != null ? `${actualPaychecks.length} actual paycheck${actualPaychecks.length === 1 ? '' : 's'}` : 'Default estimate'}</small></div>
+          <div className="metric-card"><span>Pay schedule</span><strong>{data.settings.payFrequency}</strong></div>
         </div>
 
         <div className="page-grid income-main-grid">
           <div className="card full-card">
-            <div className="section-head"><div><span className="eyebrow">PAY HISTORY & FORECAST</span><h2>Paychecks</h2></div><button className="primary small" onClick={() => setModal('paycheck')}><Icon name="plus"/> Add paycheck</button></div>
+            <div className="section-head"><div><h2>Paychecks</h2></div><button className="primary small" onClick={() => setModal('paycheck')}><Icon name="plus"/> Add paycheck</button></div>
             <div className="income-list">
               {sortedPaychecks.map(p => {
                 const isSelected = p.id === selectedPaycheckId
@@ -378,14 +401,9 @@ function App() {
           </div>
 
           <div className="card income-editor">
-            <span className="eyebrow">PAYCHECK DETAILS</span><h2>{selected?.label}</h2>
-            <p className="muted">Enter your hours and, once the check arrives, record the actual deposit. Future paycheck forecasts will learn from your real take-home rate automatically.</p>
-            <div className="learning-note">
-              <div><span>{selected?.actualNet != null ? 'Actual paycheck recorded' : 'Automatic projection'}</span><strong>{selected?.actualNet != null ? `${((Number(selected.actualNet) / Math.max(gross, .01)) * 100).toFixed(1)}% of gross reached your account` : `${effectiveNetPercent.toFixed(1)}% of gross is being used for this forecast`}</strong></div>
-              <small>{learnedNetPercent != null ? `Your forecast is currently learned from ${actualPaychecks.length} actual paycheck${actualPaychecks.length === 1 ? '' : 's'}.` : 'Enter your first actual deposit and the app will begin learning your take-home percentage.'}</small>
-            </div>
+            <h2>{selected?.label}</h2>
             <div className="form-grid one polished-form">
-              <label><span>Projected deposit</span><div className="field-prefix readonly-field"><span>$</span><input readOnly value={projectedNetForPaycheck(selected).toFixed(2)}/></div><small className="field-help">Calculated from hours, pay rate, overtime, and your learned take-home percentage.</small></label>
+              <label><span>Estimated net</span><div className="field-prefix readonly-field"><span>$</span><input readOnly value={projectedNetForPaycheck(selected).toFixed(2)}/></div></label>
               <label><span>Actual deposit <em>optional</em></span><div className="field-prefix"><span>$</span><input type="number" step="0.01" placeholder="Enter when your paycheck arrives" value={selected?.actualNet ?? ''} onChange={e => update('paychecks', selected.id, { actualNet: e.target.value === '' ? null : Number(e.target.value) })}/></div></label>
               <div className="hours-grid">
                 <label><span>Regular hours</span><input type="number" step="0.1" value={selected?.regularHours ?? 0} onChange={e => update('paychecks', selected.id, { regularHours: Number(e.target.value) })}/></label>
@@ -395,7 +413,7 @@ function App() {
             <div className="income-calculation">
               <div><span>Hourly rate</span><strong>{money(data.settings.hourlyRate)}</strong></div>
               <div><span>Calculated gross</span><strong>{money(gross)}</strong></div>
-              <div className="highlight"><span>{selected?.actualNet != null ? 'Actual take-home' : 'Projected take-home'}</span><strong>{money(projectedNetForPaycheck(selected))}</strong></div><div><span>Forecast rate</span><strong>{effectiveNetPercent.toFixed(1)}%</strong></div>
+              <div className="highlight"><span>{selected?.actualNet != null ? 'Actual take-home' : 'Projected take-home'}</span><strong>{money(projectedNetForPaycheck(selected))}</strong></div>
             </div>
           </div>
         </div>
@@ -410,7 +428,7 @@ function App() {
 
         <div className="page-grid bills-main-grid">
           <div className="card full-card">
-            <div className="section-head"><div><span className="eyebrow">AUTOMATIC SCHEDULES</span><h2>Your bills</h2><p className="section-subtitle">Set a bill once and future due dates are generated automatically.</p></div><button className="primary small" onClick={() => { setEditingBill(null); setModal('bill') }}><Icon name="plus"/> Add bill</button></div>
+            <div className="section-head"><div><h2>Bills</h2></div><button className="primary small" onClick={() => { setEditingBill(null); setModal('bill') }}><Icon name="plus"/> Add bill</button></div>
             <div className="bill-cards">
               {data.bills.map(b => {
                 const next = nextDueFor(b)
@@ -426,7 +444,7 @@ function App() {
           </div>
 
           <div className="card schedule-card">
-            <span className="eyebrow">UPCOMING</span><h2>Payment calendar</h2>
+            <h2>Payment calendar</h2>
             <div className="schedule-list">
               {upcomingOccurrences.slice(0, 8).map(({ bill, dueDate }) => {
                 const paid = bill.paidDates.includes(dueDate)
@@ -442,23 +460,28 @@ function App() {
         </div>
       </section>}
 
-      {view === 'transactions' && <section className="card full-card">
-        <div className="section-head"><div><span className="eyebrow">SPENDING</span><h2>Transactions & planned purchases</h2></div><button className="primary small" onClick={() => setModal('transaction')}><Icon name="plus"/> Add expense</button></div>
-        <div className="table-wrap"><table><thead><tr><th>Date</th><th>Name</th><th>Category</th><th>Paycheck</th><th>Status</th><th>Amount</th><th></th></tr></thead><tbody>{data.transactions.map(t => <tr key={t.id}><td>{shortDate(t.date)}</td><td><strong>{t.name}</strong></td><td>{t.category}</td><td>{data.paychecks.find(p => p.id === t.paycheckId)?.label || '—'}</td><td><span className={`pill ${t.type}`}>{t.type === 'spent' ? 'Spent' : 'Planned'}</span></td><td><strong>{money(t.amount)}</strong></td><td><button className="delete" onClick={() => remove('transactions', t.id)}>Delete</button></td></tr>)}</tbody></table></div>
+      {view === 'transactions' && <section className="spending-page">
+        <div className="spending-action-grid"><button className="card spending-action" onClick={() => setModal('quickSpend')}><strong>Add spending</strong><small>Amount and category</small></button><button className="card spending-action" onClick={() => setModal('plannedPurchase')}><strong>Plan a purchase</strong><small>Reserve from a paycheck</small></button></div>
+        <div className="card full-card">
+          <div className="section-head"><div><h2>Activity</h2></div></div>
+          <div className="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Paycheck</th><th>Type</th><th>Amount</th><th></th></tr></thead><tbody>{data.transactions.map(t => <tr key={t.id}><td>{shortDate(t.date)}</td><td><strong>{t.name || t.category}</strong></td><td>{t.category}</td><td>{data.paychecks.find(p => p.id === t.paycheckId)?.label || '—'}</td><td><span className={`pill ${t.type}`}>{t.type === 'spent' ? 'Spent' : 'Planned'}</span></td><td><strong>{money(t.amount)}</strong></td><td><button className="delete" onClick={() => remove('transactions', t.id)}>Delete</button></td></tr>)}</tbody></table></div>
+        </div>
       </section>}
 
-      {view === 'goals' && <section className="goals-grid">{data.goals.map(g => <div className="card goal-card" key={g.id}><div className="goal-icon"><Icon name="goals"/></div><h2>{g.name}</h2><div className="goal-money">{money(g.saved)} <span>of {money(g.target)}</span></div><Progress value={(g.saved / g.target) * 100}/><div className="goal-controls"><label>Saved<input type="number" step="0.01" value={g.saved} onChange={e => update('goals', g.id, { saved: Number(e.target.value) })}/></label><label>Target<input type="number" step="0.01" value={g.target} onChange={e => update('goals', g.id, { target: Number(e.target.value) })}/></label></div><p>Target: {longDate(g.targetDate)}</p><button className="delete" onClick={() => remove('goals', g.id)}>Delete goal</button></div>)}<button className="add-card" onClick={() => setModal('goal')}><Icon name="plus"/><strong>Add a goal</strong><span>Save toward anything important.</span></button></section>}
+      {view === 'goals' && <section className="goals-grid">{data.goals.map(g => <div className="card goal-card" key={g.id}><div className="goal-icon"><Icon name="goals"/></div><h2>{g.name}</h2><div className="goal-money">{money(g.saved)} <span>of {money(g.target)}</span></div><Progress value={(g.saved / g.target) * 100}/><div className="goal-controls"><label>Saved<input type="number" step="0.01" value={g.saved} onChange={e => update('goals', g.id, { saved: Number(e.target.value) })}/></label><label>Target<input type="number" step="0.01" value={g.target} onChange={e => update('goals', g.id, { target: Number(e.target.value) })}/></label></div><p>Target: {longDate(g.targetDate)}</p><button className="delete" onClick={() => remove('goals', g.id)}>Delete goal</button></div>)}<button className="add-card" onClick={() => setModal('goal')}><Icon name="plus"/><strong>Add goal</strong></button></section>}
 
       {view === 'settings' && <section className="settings-grid">
-        <div className="card"><span className="eyebrow">PAY ESTIMATES</span><h2>Income settings</h2><div className="form-grid one"><label>Hourly rate<input type="number" step="0.01" value={data.settings.hourlyRate} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, hourlyRate: Number(e.target.value) } }))}/></label><label>Overtime multiplier<input type="number" step="0.1" value={data.settings.overtimeMultiplier} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, overtimeMultiplier: Number(e.target.value) } }))}/></label><label>Starting take-home %<input type="number" step="0.1" value={data.settings.estimatedNetPercent} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, estimatedNetPercent: Number(e.target.value) } }))}/><small className="field-help">Used until you have an actual paycheck recorded.</small></label><label className="toggle-row"><span><strong>Learn from actual deposits</strong><small>Automatically use your real net-to-gross percentage for future paycheck forecasts.</small></span><input type="checkbox" checked={data.settings.autoLearnNet !== false} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, autoLearnNet: e.target.checked } }))}/></label><label>Safety buffer<input type="number" step="1" value={data.settings.safetyBuffer} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, safetyBuffer: Number(e.target.value) } }))}/></label></div></div>
-        <div className="card"><span className="eyebrow">YOUR DATA</span><h2>Backup & privacy</h2><p className="muted">Your budget is currently stored on this device. Download a backup anytime so you have a copy of your information.</p><div className="stack-buttons"><button className="secondary" onClick={exportData}><Icon name="download"/> Download backup</button><button className="danger" onClick={resetData}><Icon name="reset"/> Reset budget</button></div></div>
+        <div className="card"><h2>Appearance</h2><div className="form-grid one"><label>Theme<select value={data.settings.themeMode || 'dark'} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, themeMode: e.target.value } }))}><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Accent color<div className="accent-picker">{['mint','blue','purple','orange'].map(a => <button type="button" key={a} aria-label={a} className={`accent-swatch ${a} ${(data.settings.accentTheme || 'mint') === a ? 'selected' : ''}`} onClick={() => setData(d => ({ ...d, settings: { ...d.settings, accentTheme: a } }))}/>)}</div></label></div></div>
+        <div className="card"><h2>Income</h2><div className="form-grid one"><label>Hourly rate<input type="number" step="0.01" value={data.settings.hourlyRate} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, hourlyRate: Number(e.target.value) } }))}/></label><label>Overtime multiplier<input type="number" step="0.1" value={data.settings.overtimeMultiplier} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, overtimeMultiplier: Number(e.target.value) } }))}/></label><label>Default net %<input type="number" step="0.1" value={data.settings.estimatedNetPercent} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, estimatedNetPercent: Number(e.target.value) } }))}/></label><label className="toggle-row"><span><strong>Auto-adjust net rate</strong></span><input type="checkbox" checked={data.settings.autoLearnNet !== false} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, autoLearnNet: e.target.checked } }))}/></label><label>Safety buffer<input type="number" step="1" value={data.settings.safetyBuffer} onChange={e => setData(d => ({ ...d, settings: { ...d.settings, safetyBuffer: Number(e.target.value) } }))}/></label></div></div>
+        <div className="card"><h2>Data</h2><div className="stack-buttons"><button className="secondary" onClick={exportData}><Icon name="download"/> Download backup</button><button className="danger" onClick={resetData}><Icon name="reset"/> Reset budget</button></div></div>
       </section>}
     </main>
 
     <div className="mobile-nav">{navItems.slice(0, 5).map(([id, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span></button>)}</div>
 
     {modal === 'bill' && <BillModal bill={editingBill} onClose={() => { setEditingBill(null); setModal(null) }} onSave={saveBill}/>} 
-    {modal === 'transaction' && <TransactionModal paychecks={sortedPaychecks} defaultPaycheckId={selectedPaycheckId} onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, transactions: [...d.transactions, item] })); setModal(null) }}/>} 
+    {modal === 'quickSpend' && <QuickSpendModal paychecks={sortedPaychecks} defaultPaycheckId={selectedPaycheckId} onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, transactions: [...d.transactions, item] })); setModal(null) }}/>} 
+    {modal === 'plannedPurchase' && <PlannedPurchaseModal paychecks={sortedPaychecks} defaultPaycheckId={selectedPaycheckId} onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, transactions: [...d.transactions, item] })); setModal(null) }}/>} 
     {modal === 'paycheck' && <PaycheckModal onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, paychecks: [...d.paychecks, item].sort((a, b) => a.date.localeCompare(b.date)) })); setSelectedPaycheckId(item.id); setModal(null) }}/>} 
     {modal === 'goal' && <GoalModal onClose={() => setModal(null)} onSave={item => { setData(d => ({ ...d, goals: [...d.goals, item] })); setModal(null) }}/>} 
   </div>
@@ -502,14 +525,20 @@ function BillModal({ bill, onClose, onSave }) {
   </Modal>
 }
 
-function TransactionModal({ paychecks, defaultPaycheckId, onClose, onSave }) {
-  const [f, setF] = useState({ name: '', amount: '', date: todayIso(), category: 'Everyday', paycheckId: defaultPaycheckId, type: 'planned' })
-  return <Modal title="Add expense" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('txn'), amount: Number(f.amount) }) }}><div className="form-grid"><label>Name<input required autoFocus value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Amount<input required type="number" step="0.01" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></label><label>Date<input required type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Category<select value={f.category} onChange={e => setF({ ...f, category: e.target.value })}><option>Everyday</option><option>Food</option><option>Gas</option><option>PC</option><option>Travel</option><option>Planned purchase</option><option>Other</option></select></label><label>Type<select value={f.type} onChange={e => setF({ ...f, type: e.target.value })}><option value="planned">Planned</option><option value="spent">Spent</option></select></label><label>Pay from<select value={f.paycheckId} onChange={e => setF({ ...f, paycheckId: e.target.value })}>{paychecks.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add expense</button></div></form></Modal>
+function QuickSpendModal({ paychecks, defaultPaycheckId, onClose, onSave }) {
+  const [f, setF] = useState({ name: '', amount: '', date: todayIso(), category: 'Food', paycheckId: defaultPaycheckId })
+  const categories = ['Food','Gas','Shopping','Entertainment','PC','Travel','Other']
+  return <Modal title="Quick add spending" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('txn'), name: f.name.trim() || f.category, amount: Number(f.amount), type: 'spent' }) }}><div className="quick-spend-amount"><span>$</span><input required autoFocus inputMode="decimal" type="number" step="0.01" placeholder="0.00" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></div><div className="category-chips">{categories.map(c => <button type="button" className={f.category === c ? 'active' : ''} key={c} onClick={() => setF({ ...f, category: c })}>{c}</button>)}</div><div className="form-grid"><label>Description <small className="field-help">optional</small><input placeholder="Coffee, groceries, gas…" value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label className="wide">Pay from<select value={f.paycheckId} onChange={e => setF({ ...f, paycheckId: e.target.value })}>{paychecks.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add spending</button></div></form></Modal>
+}
+
+function PlannedPurchaseModal({ paychecks, defaultPaycheckId, onClose, onSave }) {
+  const [f, setF] = useState({ name: '', amount: '', date: todayIso(), category: 'Planned purchase', paycheckId: defaultPaycheckId })
+  return <Modal title="Plan a purchase" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('txn'), amount: Number(f.amount), type: 'planned' }) }}><div className="form-grid"><label>Purchase<input required autoFocus placeholder="PC part, trip, chair…" value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/></label><label>Amount<input required type="number" step="0.01" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })}/></label><label>Planned date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Category<select value={f.category} onChange={e => setF({ ...f, category: e.target.value })}><option>Planned purchase</option><option>PC</option><option>Travel</option><option>Shopping</option><option>Other</option></select></label><label className="wide">Pay from<select value={f.paycheckId} onChange={e => setF({ ...f, paycheckId: e.target.value })}>{paychecks.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Reserve money</button></div></form></Modal>
 }
 
 function PaycheckModal({ onClose, onSave }) {
   const [f, setF] = useState({ date: addDays(todayIso(), 14), label: 'Paycheck', expectedNet: 0, actualNet: null, regularHours: 80, overtimeHours: 0, status: 'upcoming' })
-  return <Modal title="Add paycheck" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('pc'), expectedNet: Number(f.expectedNet), regularHours: Number(f.regularHours), overtimeHours: Number(f.overtimeHours) }) }}><div className="form-grid"><label>Date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Label<input value={f.label} onChange={e => setF({ ...f, label: e.target.value })}/></label><label>Regular hours<input type="number" step="0.1" value={f.regularHours} onChange={e => setF({ ...f, regularHours: e.target.value })}/></label><label>Overtime hours<input type="number" step="0.1" value={f.overtimeHours} onChange={e => setF({ ...f, overtimeHours: e.target.value })}/></label></div><div className="schedule-preview"><Icon name="wallet"/><div><span>Automatic forecast</span><strong>Take-home will be projected from your hours and learned paycheck rate.</strong></div></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add paycheck</button></div></form></Modal>
+  return <Modal title="Add paycheck" onClose={onClose}><form onSubmit={e => { e.preventDefault(); onSave({ ...f, id: uid('pc'), expectedNet: Number(f.expectedNet), regularHours: Number(f.regularHours), overtimeHours: Number(f.overtimeHours) }) }}><div className="form-grid"><label>Date<input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })}/></label><label>Label<input value={f.label} onChange={e => setF({ ...f, label: e.target.value })}/></label><label>Regular hours<input type="number" step="0.1" value={f.regularHours} onChange={e => setF({ ...f, regularHours: e.target.value })}/></label><label>Overtime hours<input type="number" step="0.1" value={f.overtimeHours} onChange={e => setF({ ...f, overtimeHours: e.target.value })}/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Add paycheck</button></div></form></Modal>
 }
 
 function GoalModal({ onClose, onSave }) {
