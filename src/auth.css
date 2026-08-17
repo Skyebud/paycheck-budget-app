@@ -85,6 +85,11 @@
   cursor: pointer;
 }
 
+.auth-submit:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
 .auth-switch {
   width: 100%;
   margin-top: 20px;
@@ -95,8 +100,8 @@
 }
 
 .auth-error {
-  border: 1px solid rgba(255, 100, 100, 0.35);
-  background: rgba(255, 100, 100, 0.08);
+  border: 1px solid rgba(255, 100, 100, .35);
+  background: rgba(255, 100, 100, .08);
   color: #ffadad;
   border-radius: 9px;
   padding: 10px 12px;
@@ -108,11 +113,9 @@
   border: 3px solid #27323a;
   border-top-color: #5ce0b3;
   border-radius: 50%;
-  animation: auth-spin 0.8s linear infinite;
+  animation: auth-spin .8s linear infinite;
 }
 
 @keyframes auth-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }

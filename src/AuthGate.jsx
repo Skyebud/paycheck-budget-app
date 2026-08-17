@@ -86,9 +86,7 @@ export default function AuthGate({ children }) {
     )
   }
 
-  if (user) {
-    return children
-  }
+  if (user) return children
 
   return (
     <main className="auth-page">
@@ -111,7 +109,7 @@ export default function AuthGate({ children }) {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
               required
             />
           </label>
@@ -121,7 +119,7 @@ export default function AuthGate({ children }) {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               minLength={6}
               required
             />
@@ -133,7 +131,7 @@ export default function AuthGate({ children }) {
               <input
                 type="password"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(event) => setConfirmPassword(event.target.value)}
                 minLength={6}
                 required
               />
