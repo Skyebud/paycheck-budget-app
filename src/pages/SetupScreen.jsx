@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Segmented from '../components/Segmented'
@@ -7,6 +7,7 @@ import { uid } from '../lib/format'
 
 export default function SetupScreen({ data, setData }) {
   const [kind, setKind] = useState('paycheck')
+  const [employer, setEmployer] = useState('')
   const [recurrence, setRecurrence] = useState('biweekly')
   const [firstDate, setFirstDate] = useState(todayIso())
   const [payMode, setPayMode] = useState('hourly')
@@ -16,15 +17,34 @@ export default function SetupScreen({ data, setData }) {
   const [regularHours, setRegularHours] = useState(80)
   const [amount, setAmount] = useState('')
 
+  useEffect(() => {
+    if (kind === 'paycheck' && recurrence === 'once') {
+      setRecurrence('biweekly')
+    }
+  }, [kind, recurrence])
+
   const finish = (skip = false) => {
+    const cleanEmployer = employer.trim()
+    const savedRecurrence =
+      kind === 'paycheck' && recurrence === 'once'
+        ? 'biweekly'
+        : recurrence
+
     const income = skip
       ? []
       : [
           {
             id: uid('income'),
-            name: kind === 'paycheck' ? 'Paycheck' : 'Income',
+            name:
+              kind === 'paycheck'
+                ? cleanEmployer || 'Paycheck'
+                : 'Income',
+            employer:
+              kind === 'paycheck'
+                ? cleanEmployer
+                : undefined,
             kind,
-            recurrence,
+            recurrence: savedRecurrence,
             firstDate,
             payMode,
             hourlyRate: Number(hourlyRate || 0),
@@ -70,21 +90,45 @@ export default function SetupScreen({ data, setData }) {
             />
           </Field>
 
+          {kind === 'paycheck' && (
+            <Field label="Employer or company (optional)">
+              <input
+                value={employer}
+                onChange={(event) => setEmployer(event.target.value)}
+                placeholder="DeVry University"
+              />
+            </Field>
+          )}
+
           <Field label="Schedule">
             <Segmented
               value={recurrence}
               onChange={setRecurrence}
-              options={[
-                ['once', 'One-time'],
-                ['weekly', 'Weekly'],
-                ['biweekly', 'Every 2 weeks'],
-                ['monthly', 'Monthly'],
-              ]}
+              options={
+                kind === 'paycheck'
+                  ? [
+                      ['weekly', 'Weekly'],
+                      ['biweekly', 'Every 2 weeks'],
+                      ['monthly', 'Monthly'],
+                    ]
+                  : [
+                      ['once', 'One-time'],
+                      ['weekly', 'Weekly'],
+                      ['biweekly', 'Every 2 weeks'],
+                      ['monthly', 'Monthly'],
+                    ]
+              }
             />
           </Field>
 
           <Field
-            label={recurrence === 'once' ? 'Date' : 'First payment'}
+            label={
+              recurrence === 'once'
+                ? 'Date'
+                : kind === 'paycheck'
+                  ? 'First payday'
+                  : 'First payment'
+            }
           >
             <DateInput
               value={firstDate}
