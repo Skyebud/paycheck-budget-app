@@ -9,20 +9,27 @@ function clampDay(value) {
   return Math.max(1, Math.min(31, Number(value || 1)))
 }
 
+function payPeriodsPerYear(recurrence) {
+  if (recurrence === 'weekly') return 52
+  if (recurrence === 'semimonthly') return 24
+  if (recurrence === 'monthly') return 12
+  return 26
+}
+
 export default function PaycheckSourceModal({
   item,
   settings,
   onClose,
   onSave,
 }) {
+  const initialRecurrence =
+    item?.recurrence && item.recurrence !== 'once'
+      ? item.recurrence
+      : 'biweekly'
   const [employer, setEmployer] = useState(
     item?.employer || (item?.name !== 'Paycheck' ? item?.name : '') || '',
   )
-  const [recurrence, setRecurrence] = useState(
-    item?.recurrence && item.recurrence !== 'once'
-      ? item.recurrence
-      : 'biweekly',
-  )
+  const [recurrence, setRecurrence] = useState(initialRecurrence)
   const [firstDate, setFirstDate] = useState(item?.firstDate || '')
   const [dayOne, setDayOne] = useState(
     item?.semimonthlyDays?.[0] ?? 1,
@@ -30,7 +37,11 @@ export default function PaycheckSourceModal({
   const [dayTwo, setDayTwo] = useState(
     item?.semimonthlyDays?.[1] ?? 15,
   )
-  const [payMode, setPayMode] = useState(item?.payMode || 'hourly')
+  const [payMode, setPayMode] = useState(
+    item?.payMode === 'salary' || item?.payMode === 'fixed'
+      ? 'salary'
+      : 'hourly',
+  )
   const [hourlyRate, setHourlyRate] = useState(
     item?.hourlyRate ?? settings.hourlyRate ?? '',
   )
@@ -43,9 +54,23 @@ export default function PaycheckSourceModal({
   const [overtimeMultiplier, setOvertimeMultiplier] = useState(
     item?.overtimeMultiplier ?? settings.overtimeMultiplier ?? 1.5,
   )
-  const [fixedAmount, setFixedAmount] = useState(
-    item?.expectedNet ?? item?.amount ?? '',
-  )
+  const [annualSalary, setAnnualSalary] = useState(() => {
+    if (item?.annualSalary != null && Number(item.annualSalary) > 0) {
+      return item.annualSalary
+    }
+
+    if (item?.payMode === 'fixed') {
+      const net = Number(item.expectedNet ?? item.amount ?? 0)
+      const netPercent = Number(settings.estimatedNetPercent || 83) / 100
+      if (net > 0 && netPercent > 0) {
+        return Math.round(
+          (net / netPercent) * payPeriodsPerYear(initialRecurrence),
+        )
+      }
+    }
+
+    return ''
+  })
 
   useEffect(() => {
     if (recurrence !== 'semimonthly' || !firstDate || item?.semimonthlyDays) {
@@ -86,11 +111,10 @@ export default function PaycheckSourceModal({
       regularHours: Number(regularHours || 0),
       overtimeHours: Number(overtimeHours || 0),
       overtimeMultiplier: Number(overtimeMultiplier || 1.5),
-      amount: payMode === 'fixed' ? Number(fixedAmount || 0) : 0,
-      expectedNet:
-        payMode === 'fixed'
-          ? Number(fixedAmount || 0)
-          : Number(item?.expectedNet || 0),
+      annualSalary:
+        payMode === 'salary' ? Number(annualSalary || 0) : 0,
+      amount: 0,
+      expectedNet: 0,
       actuals: item?.actuals || {},
     })
   }
@@ -169,7 +193,7 @@ export default function PaycheckSourceModal({
             onChange={setPayMode}
             options={[
               ['hourly', 'Hourly'],
-              ['fixed', 'Fixed deposit'],
+              ['salary', 'Salary'],
             ]}
           />
         </Field>
@@ -223,14 +247,15 @@ export default function PaycheckSourceModal({
             </Field>
           </>
         ) : (
-          <Field label="Expected deposit">
+          <Field label="Annual salary">
             <input
               className="amount-input"
               type="number"
-              step="0.01"
+              step="100"
               min="0"
-              value={fixedAmount}
-              onChange={(event) => setFixedAmount(event.target.value)}
+              value={annualSalary}
+              onChange={(event) => setAnnualSalary(event.target.value)}
+              placeholder="60000"
               required
             />
           </Field>

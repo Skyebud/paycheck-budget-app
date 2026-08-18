@@ -22,11 +22,16 @@ export default function ActualPayModal({
   const submit = (event) => {
     event.preventDefault()
 
-    onSave({
+    const actual = {
       actualNet: Number(actualNet || 0),
-      regularHours: Number(regularHours || 0),
-      overtimeHours: Number(overtimeHours || 0),
-    })
+    }
+
+    if (occurrence.item.payMode === 'hourly') {
+      actual.regularHours = Number(regularHours || 0)
+      actual.overtimeHours = Number(overtimeHours || 0)
+    }
+
+    onSave(actual)
   }
 
   const sourceName = occurrence.item.employer || occurrence.item.name
@@ -55,7 +60,7 @@ export default function ActualPayModal({
           />
         </Field>
 
-        {occurrence.item.kind === 'paycheck' && occurrence.item.payMode !== 'fixed' && (
+        {occurrence.item.kind === 'paycheck' && occurrence.item.payMode === 'hourly' && (
           <div className="form-grid two">
             <Field label="Regular hours">
               <input

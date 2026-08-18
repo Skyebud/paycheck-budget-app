@@ -8,6 +8,41 @@ function transactionEffect(transaction) {
   return 0
 }
 
+function payPeriodsPerYear(recurrence) {
+  if (recurrence === 'weekly') return 52
+  if (recurrence === 'semimonthly') return 24
+  if (recurrence === 'monthly') return 12
+  return 26
+}
+
+function paycheckGross(item, settings, override = {}) {
+  if (item.payMode === 'fixed') return 0
+
+  if (item.payMode === 'salary') {
+    const annualSalary = Number(
+      override.annualSalary ?? item.annualSalary ?? 0,
+    )
+    return annualSalary > 0
+      ? annualSalary / payPeriodsPerYear(item.recurrence)
+      : 0
+  }
+
+  const rate = Number(
+    item.hourlyRate || settings.hourlyRate || 0,
+  )
+  const regular = Number(
+    override.regularHours ?? item.regularHours ?? 0,
+  )
+  const overtime = Number(
+    override.overtimeHours ?? item.overtimeHours ?? 0,
+  )
+  const multiplier = Number(
+    item.overtimeMultiplier || settings.overtimeMultiplier || 1.5,
+  )
+
+  return regular * rate + overtime * rate * multiplier
+}
+
 export function calculateBudgetView(data) {
   const now = todayIso()
   const occurrenceRange = {
@@ -24,25 +59,7 @@ export function calculateBudgetView(data) {
       Object.values(item.actuals || {}).forEach((actual) => {
         if (actual.actualNet == null) return
 
-        const rate = Number(
-          item.hourlyRate || data.settings.hourlyRate || 0,
-        )
-        const regular = Number(
-          actual.regularHours ?? item.regularHours ?? 0,
-        )
-        const overtime = Number(
-          actual.overtimeHours ?? item.overtimeHours ?? 0,
-        )
-        const multiplier = Number(
-          item.overtimeMultiplier ||
-            data.settings.overtimeMultiplier ||
-            1.5,
-        )
-
-        const gross =
-          item.payMode === 'fixed'
-            ? 0
-            : regular * rate + overtime * rate * multiplier
+        const gross = paycheckGross(item, data.settings, actual)
 
         if (gross > 0) {
           grossTotal += gross
@@ -78,22 +95,11 @@ export function calculateBudgetView(data) {
       )
     }
 
-    const rate = Number(
-      item.hourlyRate || data.settings.hourlyRate || 0,
+    const gross = paycheckGross(
+      item,
+      data.settings,
+      estimateOverride || {},
     )
-    const regular = Number(
-      estimateOverride?.regularHours ?? item.regularHours ?? 0,
-    )
-    const overtime = Number(
-      estimateOverride?.overtimeHours ?? item.overtimeHours ?? 0,
-    )
-    const multiplier = Number(
-      item.overtimeMultiplier ||
-        data.settings.overtimeMultiplier ||
-        1.5,
-    )
-
-    const gross = regular * rate + overtime * rate * multiplier
 
     return gross > 0
       ? gross * (effectiveNetPercent / 100)
