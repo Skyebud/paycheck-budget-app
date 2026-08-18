@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import DateInput from '../components/DateInput'
 import Field from '../components/Field'
 import Segmented from '../components/Segmented'
@@ -12,7 +12,7 @@ export default function SetupScreen({ data, setData }) {
   const [firstDate, setFirstDate] = useState(todayIso())
   const [payMode, setPayMode] = useState('hourly')
   const [hourlyRate, setHourlyRate] = useState(
-    data.settings.hourlyRate || 22.28,
+    data.settings.hourlyRate || 29.28,
   )
   const [regularHours, setRegularHours] = useState(80)
   const [amount, setAmount] = useState('')

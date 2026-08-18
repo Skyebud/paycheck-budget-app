@@ -1,5 +1,5 @@
-export const DEFAULT_SETTINGS = {
-  hourlyRate: 22.28,
+﻿export const DEFAULT_SETTINGS = {
+  hourlyRate: 29.28,
   overtimeMultiplier: 1.5,
   estimatedNetPercent: 83,
   autoLearnNet: true,
